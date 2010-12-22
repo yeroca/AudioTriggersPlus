@@ -12,7 +12,27 @@
 #include "../inc/fmod_errors.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <string.h>
+#include <fcntl.h>
+#include <errno.h>
+
+char *log_file_names[] = {
+		"/home/corey/log1",
+		"/home/corey/log2"
+};
+
+struct log_file_info {
+	int fd;
+	FILE *file;
+};
+
+struct log_file_info *lfi;
+
+static int num_log_files(void)
+{
+	return sizeof(log_file_names) / sizeof(char *);
+}
 
 void ERRCHECK(FMOD_RESULT result) {
 	if (result != FMOD_OK) {
@@ -25,8 +45,9 @@ int get_readable_fd(fd_set *fds, int max_fd) {
 	int i;
 
 	for (i = 0; i <= max_fd; i++) {
-		if (FD_ISSET(i, fds))
+		if (FD_ISSET(i, fds)) {
 			return i;
+		}
 	}
 	return -1;
 }
@@ -34,33 +55,47 @@ int get_readable_fd(fd_set *fds, int max_fd) {
 static size_t buf_size = 1024;
 static char* buffer = NULL;
 
-int get_log_line(fd_set *fds, int max_fd, char **line, int *fd) {
+int get_log_line(fd_set *fds, int max_fd, char **line, int *log_file_num) {
 
-	int ret, readable_fd;
+	int ret, readable_fd, i;
+	FILE *readable_file;
 	fd_set read_fds = *fds;
 	FILE *file;
+	bool found = false;
 
-	ret = pselect(1, &read_fds, NULL, NULL, NULL, NULL);
+	ret = pselect(max_fd + 1, &read_fds, NULL, NULL, NULL, NULL);
+	fprintf(stderr, "pselect returned %d\n", ret);
+
 	if (ret < 0) {
 		printf("pselect returned error: %d\n", ret);
 		exit(1);
 	}
-	printf("pselect returned %d\n", ret);
-	readable_fd = get_readable_fd(fds, max_fd);
+	readable_fd = get_readable_fd(&read_fds, max_fd);
 	if (readable_fd < 0) {
-		printf("get_readable_fds returned %d\n", fd);
+		fprintf(stderr, "get_readable_fds returned %d\n", readable_fd);
+		exit(1);
 	}
-	*fd = readable_fd;
+	for (i = 0; i < num_log_files(); i++) {
+		if (lfi[i].fd == readable_fd) {
+			found = true;
+			break;
+		}
+	}
+	if (!found) {
+		fprintf(stderr, "unable to find fd %d in lfi array\n", readable_fd);
+		exit(1);
+	}
 
 	if (buffer == NULL)
-		malloc(buf_size);
+		buffer = malloc(buf_size);
 
-	file = fdopen(readable_fd, "r");
-	ret = getline(&buffer, &buf_size, file);
+	ret = getline(&buffer, &buf_size, lfi[i].file);
+
 	/* trim off new line */
-	buffer[ret - 1] = '\0';
-	printf("buf_size = %d, ret = %d, strlen(buffer) = %d, line read: %s\n",
+	fprintf(stderr, "buf_size = %d, ret = %d, strlen(buffer) = %d, line read: %s\n",
 			buf_size, ret, strlen(buffer), buffer);
+
+	*log_file_num = i;
 	*line = buffer;
 }
 
@@ -77,12 +112,33 @@ int main(int argc, char *argv[]) {
 	FMOD_CHANNEL *channel = 0;
 	FMOD_RESULT result;
 	unsigned int version;
-	int i, fd = 0, max_fd = 0, log_fd;
-	fd_set log_fds;
+	int i, max_fd = -1, ret, log_num;
+	fd_set log_fd_set;
 	char *line;
+	char buffer[1024];
+	char tail_cmd[1024];
 
-	FD_ZERO(&log_fds);
-	FD_SET(fd, &log_fds);
+	FD_ZERO(&log_fd_set);
+
+	lfi = malloc(sizeof(struct log_file_info) * num_log_files());
+
+	for (i = 0; i < num_log_files(); i++) {
+		sprintf(tail_cmd, "/usr/bin/tail -f %s", log_file_names[i]);
+fprintf(stderr, "attempting to open pipe for command: %s\n", tail_cmd);
+		lfi[i].file = popen(tail_cmd, "r");
+		if (lfi[i].file == NULL) {
+			fprintf(stderr, "popen return NULL for \"%s\"\n", tail_cmd);
+		}
+		lfi[i].fd = fileno(lfi[i].file);
+		if (lfi[i].fd < 0) {
+			fprintf(stderr, "Unable to convert FILE pointer to fd\n");
+			exit(1);
+		}
+		if (lfi[i].fd > max_fd)
+			max_fd = lfi[i].fd;
+fprintf(stderr, "setting fd %d\n", lfi[i].fd);
+		FD_SET(lfi[i].fd, &log_fd_set);
+	}
 
 	/*
 	 Create a System object and initialize.
@@ -151,7 +207,8 @@ int main(int argc, char *argv[]) {
 	 Main loop.
 	 */
 	while (1) {
-		get_log_line(&log_fds, max_fd, &line, &log_fd);
+		get_log_line(&log_fd_set, max_fd, &line, &log_num);
+fprintf(stderr, "log line came from file %d\n", log_num);
 		for (i = 0; i < sizeof(triggers) / sizeof(struct trigger); i++) {
 			if (strstr(line, triggers[i].pattern)) {
 				switch (triggers[i].sound_to_play) {
