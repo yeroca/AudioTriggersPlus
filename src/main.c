@@ -147,7 +147,11 @@ struct sound sounds[] = {
 static inline int get_num_sounds()
 {
 	return (sizeof(sounds) / sizeof(struct sound));
+
 }
+
+/* Before character 28 of every log line is just the time stamp, so skip it */
+#define LOG_MSG_START 28
 
 void *logwatcher(void *arg) {
 	intptr_t log_file_num = (intptr_t)arg;
@@ -171,7 +175,7 @@ void *logwatcher(void *arg) {
 		debugmsg("got line: %s\n", buffer);
 		for (i = 0; i < sizeof(triggers) / sizeof(struct trigger); i++) {
 			debugmsg("looking for %s in %s\n", triggers[i].pattern, buffer);
-			if (case_insensitive_strstr(buffer, triggers[i].pattern)) {
+			if (case_insensitive_strstr(&buffer[LOG_MSG_START], triggers[i].pattern)) {
 				enqueue_sound(triggers[i].sound_to_play_id);
 				if (triggers[i].stop_search_when_match)
 					break;
