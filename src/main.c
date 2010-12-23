@@ -19,7 +19,7 @@
 #include <errno.h>
 #include <pthread.h>
 
-#define DEBUG 1
+#define DEBUG 0
 #if DEBUG
 #define debugmsg(args...) fprintf(stderr, args)
 #else
@@ -118,7 +118,9 @@ struct trigger {
 struct trigger triggers[] = {
 		{ .name = "sound0", .pattern = "play sound 0", .stop_search_when_match = false, .sound_to_play = "drum_left" },
 		{ .name = "sound1", .pattern = "play sound 1", .stop_search_when_match = false, .sound_to_play = "drum_right" },
-		{ .name = "sound2", .pattern = "play sound 2", .stop_search_when_match = false, .sound_to_play = "drum_middle" }
+		{ .name = "sound2", .pattern = "play sound 2", .stop_search_when_match = false, .sound_to_play = "drum_middle" },
+		{ .name = "turt", .pattern = "turt", .stop_search_when_match = false, .sound_to_play = "tell2" },
+		{ .name = "mezzbreak", .pattern = "has been awakened by", .stop_search_when_match = true, .sound_to_play = "drum_left"}
 };
 
 static inline int get_num_triggers()
@@ -141,7 +143,10 @@ struct sound {
 struct sound sounds[] = {
 		{ .name = "drum_left", .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = -1.0, .prio = USE_DEFAULT_PRIO },
 		{ .name = "drum_right", .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 1.0, .prio = USE_DEFAULT_PRIO },
-		{ .name = "drum_middle", .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 0.0, .prio = USE_DEFAULT_PRIO }
+		{ .name = "drum_middle", .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 0.0, .prio = USE_DEFAULT_PRIO },
+		{ .name = "tell2", .file = "../eq_audio/Tell2.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = USE_DEFAULT, .prio = USE_DEFAULT_PRIO },
+		{ .name = "alert2", .file = "../eq_audio/Alert2.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = USE_DEFAULT, .prio = USE_DEFAULT_PRIO },
+		{ .name = "alert5", .file = "../eq_audio/Alert5.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = USE_DEFAULT, .prio = USE_DEFAULT_PRIO },
 };
 
 static inline int get_num_sounds()
