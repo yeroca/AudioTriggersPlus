@@ -19,7 +19,7 @@
 #include <errno.h>
 #include <pthread.h>
 
-#define DEBUG 0
+#define DEBUG 1
 #if DEBUG
 #define debugmsg(args...) fprintf(stderr, args)
 #else
@@ -60,7 +60,7 @@ static inline int num_log_files(void)
 
 void ERRCHECK(FMOD_RESULT result) {
 	if (result != FMOD_OK) {
-		printf("FMOD error! (%d) %s\n", result, FMOD_ErrorString(result));
+		fprintf(stderr, "FMOD error! (%d) %s\n", result, FMOD_ErrorString(result));
 		exit(-1);
 	}
 }
@@ -112,7 +112,32 @@ struct trigger {
 	int sound_to_play;
 };
 
-struct trigger triggers[] = { { "play sound 1", false, 1 }, { "play sound 2", false, 2 }, { "play sound 3", false, 3 } };
+struct trigger triggers[] = {
+		{ .pattern = "play sound 0", .stop_search_when_match = false, .sound_to_play = 0 },
+		{ .pattern = "play sound 1", .stop_search_when_match = false, .sound_to_play = 1 },
+		{ .pattern = "play sound 2", .stop_search_when_match = false, .sound_to_play = 2 }
+};
+
+/* sentinel to indicate taking the system default sound attributes */
+#define USE_DEFAULT -1000.0
+#define USE_DEFAULT_PRIO -1000
+struct sound {
+	char *file;
+	int prio;
+	float freq, vol, pan;
+
+};
+
+struct sound sounds[] = {
+		{ .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = -1.0, .prio = USE_DEFAULT_PRIO },
+		{ .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 1.0, .prio = USE_DEFAULT_PRIO },
+		{ .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 0.0, .prio = USE_DEFAULT_PRIO }
+};
+
+static inline int get_num_sounds()
+{
+	return (sizeof(sounds) / sizeof(struct sound));
+}
 
 void *logwatcher(void *arg) {
 	intptr_t log_file_num = (intptr_t)arg;
@@ -131,20 +156,13 @@ void *logwatcher(void *arg) {
 	}
 	while (1) {
 		getline(&buffer, &buffer_size, lfi[log_file_num].file);
-		debugmsg("got line: %s", buffer);
+		/* chomp off the newline */
+		buffer[strlen(buffer) - 1] = '\0';
+		debugmsg("got line: %s\n", buffer);
 		for (i = 0; i < sizeof(triggers) / sizeof(struct trigger); i++) {
+			debugmsg("looking for %s in %s\n", triggers[i].pattern, buffer);
 			if (case_insensitive_strstr(buffer, triggers[i].pattern)) {
-				switch (triggers[i].sound_to_play) {
-				case 1:
-					enqueue_sound(1);
-					break;
-				case 2:
-					enqueue_sound(2);
-					break;
-				case 3:
-					enqueue_sound(3);
-					break;
-				}
+				enqueue_sound(triggers[i].sound_to_play);
 				if (triggers[i].stop_search_when_match)
 					break;
 			}
@@ -155,7 +173,7 @@ void *logwatcher(void *arg) {
 
 int main(int argc, char *argv[]) {
 	FMOD_SYSTEM *system;
-	FMOD_SOUND *sound1, *sound2, *sound3;
+	FMOD_SOUND **fmod_sounds;
 	FMOD_CHANNEL *channel = 0;
 	FMOD_RESULT result;
 	unsigned int version;
@@ -167,6 +185,8 @@ int main(int argc, char *argv[]) {
 	FD_ZERO(&log_fd_set);
 
 	lfi = malloc(sizeof(struct log_file_info) * num_log_files());
+	fmod_sounds = malloc(sizeof(FMOD_SOUND *) * get_num_sounds());
+
 	ret = pthread_cond_init(&events.events_available, NULL);
 	if (ret < 0) {
 		fprintf(stderr, "Unable to initialize the events cond object\n");
@@ -203,48 +223,42 @@ int main(int argc, char *argv[]) {
 	result = FMOD_System_Init(system, 32, FMOD_INIT_NORMAL, NULL);
 	ERRCHECK(result);
 
-	result = FMOD_System_CreateSound(system, "../media/drumloop.wav",
-			FMOD_SOFTWARE, 0, &sound1);
-	ERRCHECK(result);
-	result = FMOD_Sound_SetMode(sound1, FMOD_LOOP_OFF);
-	ERRCHECK(result);
-	{
+	for (i = 0; i < get_num_sounds(); i++) {
 		float freq, vol, pan;
 		int prio;
-		result = FMOD_Sound_GetDefaults(sound1, &freq, &vol, &pan, &prio);
-		ERRCHECK(result);
-		result = FMOD_Sound_SetDefaults(sound1, freq, vol, -1.0, prio);
-		ERRCHECK(result);
-	}
 
-	result = FMOD_System_CreateSound(system, "../media/drumloop.wav",
-			FMOD_SOFTWARE, 0, &sound2);
-	ERRCHECK(result);
-	result = FMOD_Sound_SetMode(sound2, FMOD_LOOP_OFF);
-	ERRCHECK(result);
-	{
-		float freq, vol, pan;
-		int prio;
-		result = FMOD_Sound_GetDefaults(sound2, &freq, &vol, &pan, &prio);
+		debugmsg("opening sound file %s\n", sounds[i].file);
+		result = FMOD_System_CreateSound(system, sounds[i].file,
+				FMOD_SOFTWARE, 0, &fmod_sounds[i]);
 		ERRCHECK(result);
-		result = FMOD_Sound_SetDefaults(sound2, freq, vol, 1.0, prio);
+		result = FMOD_Sound_SetMode(fmod_sounds[i], FMOD_LOOP_OFF);
 		ERRCHECK(result);
 
-	}
-
-	result = FMOD_System_CreateSound(system, "../media/drumloop.wav",
-			FMOD_SOFTWARE, 0, &sound3);
-	ERRCHECK(result);
-	result = FMOD_Sound_SetMode(sound3, FMOD_LOOP_OFF);
-	ERRCHECK(result);
-	{
-		float freq, vol, pan;
-		int prio;
-		result = FMOD_Sound_GetDefaults(sound3, &freq, &vol, &pan, &prio);
-		ERRCHECK(result);
-		result = FMOD_Sound_SetDefaults(sound3, freq, vol, 0.0, prio);
+		result = FMOD_Sound_GetDefaults(fmod_sounds[i], &freq, &vol,
+				&pan, &prio);
 		ERRCHECK(result);
 
+		/* override defaults as requested */
+		if (sounds[i].freq != USE_DEFAULT) {
+			debugmsg("setting freq value on %s to %f\n", sounds[i].file, sounds[i].freq);
+			freq = sounds[i].freq;
+		}
+		if (sounds[i].vol != USE_DEFAULT) {
+			debugmsg("setting vol value on %s to %f\n", sounds[i].file, sounds[i].vol);
+			vol = sounds[i].vol;
+		}
+		if (sounds[i].pan != USE_DEFAULT) {
+			debugmsg("setting pan value on %s to %f\n", sounds[i].file, sounds[i].pan);
+			pan = sounds[i].pan;
+		}
+		if (sounds[i].prio != USE_DEFAULT_PRIO) {
+			debugmsg("setting prio value on %s to %d\n", sounds[i].file, sounds[i].prio);
+			prio = sounds[i].prio;
+		}
+
+		result = FMOD_Sound_SetDefaults(fmod_sounds[i], freq, vol, pan,
+						prio);
+		ERRCHECK(result);
 	}
 
 	/*
@@ -252,39 +266,33 @@ int main(int argc, char *argv[]) {
 	 */
 	pthread_mutex_lock(&events.lock);
 	while (1) {
+		int sound_id;
+
 		while (events.cur == events.next) {
 			debugmsg("event queue is empty\n");
 			pthread_cond_wait(&events.events_available, &events.lock);
 		}
 		events.cur = (events.cur + 1) % NUM_EVENTS;
-		switch (events.entry[events.cur].sound_id) {
-		case 1:
+
+		sound_id = events.entry[events.cur].sound_id;
+		debugmsg("main loop received sound_id %d\n", sound_id);
+		if (sound_id < get_num_sounds()) {
 			result = FMOD_System_PlaySound(system,
-			                FMOD_CHANNEL_FREE, sound1, 0, &channel);
+					FMOD_CHANNEL_FREE, fmod_sounds[sound_id], 0, &channel);
 			ERRCHECK(result);
-			break;
-		case 2:
-			result = FMOD_System_PlaySound(system,
-			                FMOD_CHANNEL_FREE, sound2, 0, &channel);
-			ERRCHECK(result);
-			break;
-		case 3:
-			result = FMOD_System_PlaySound(system,
-			                FMOD_CHANNEL_FREE, sound3, 0, &channel);
-			ERRCHECK(result);
-			break;
+		} else {
+			fprintf(stderr, "sound_id: %d exceeds the last sound_id: %d\n", sound_id, get_num_sounds() - 1);
+			exit(1);
 		}
 	}
 
 	/*
 	 Shut down
 	 */
-	result = FMOD_Sound_Release(sound1);
-	ERRCHECK(result);
-	result = FMOD_Sound_Release(sound2);
-	ERRCHECK(result);
-	result = FMOD_Sound_Release(sound3);
-	ERRCHECK(result);
+	for (i = 0; i < get_num_sounds(); i++) {
+		result = FMOD_Sound_Release(fmod_sounds[i]);
+		ERRCHECK(result);
+	}
 	result = FMOD_System_Close(system);
 	ERRCHECK(result);
 	result = FMOD_System_Release(system);
@@ -292,4 +300,3 @@ int main(int argc, char *argv[]) {
 
 	return 0;
 }
-
