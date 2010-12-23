@@ -18,6 +18,10 @@
 #include <ctype.h>
 #include <errno.h>
 #include <pthread.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <inttypes.h>
 
 #define DEBUG 1
 #if DEBUG
@@ -154,20 +158,78 @@ static inline int get_num_sounds()
 	return (sizeof(sounds) / sizeof(struct sound));
 
 }
+#ifdef __CYGWIN__
+#define POS_VAL(pos) pos
+#else
+#define POS_VAL(pos) pos.__pos
+#endif
+/* This function works similar to the "tail -f" command */
+static void tail_follow(FILE *log_file, off_t *cur_size, char **buffer, size_t *buffer_size)
+{
+	int ret;
+	fpos_t pos;
+	struct stat stat_buf;
 
-/* Before character 28 of every log line is just the time stamp, so skip it */
-#define LOG_MSG_START 28
+	fgetpos(log_file, &pos);
+
+	/* the first time through, the next test will be false since cur_size == -1 */
+	if (POS_VAL(pos) < *cur_size) {
+		getline(buffer, buffer_size, log_file);
+		return;
+	}
+	while (1) {
+		/* See if there's any new data since the last time we checked */
+		ret = fstat(fileno(log_file), &stat_buf);
+		if (ret < 0) {
+			fprintf(stderr, "Unable to fstat log file: %s\n",
+					strerror(errno));
+		}
+		if (*cur_size == -1) {
+			*cur_size = stat_buf.st_size;
+		} else {
+			if (stat_buf.st_size < *cur_size) {
+				printf("file was truncated!\n");
+				exit(1);
+			} else {
+				if (stat_buf.st_size > *cur_size) {
+					getline(buffer, buffer_size, log_file);
+					*cur_size = stat_buf.st_size;
+					debugmsg("cur_size = %" PRId64 ", pos = %" PRId64 "\n",
+							*cur_size,
+							POS_VAL(pos));
+					return;
+				} else {
+					/* wait for 10 msec */
+					usleep(10 * 1000);
+				}
+			}
+		}
+	}
+}
+
+
+
+
+/* Before character 27 of every log line is just the time stamp, so skip it */
+#define LOG_MSG_START 27
+
 
 void *logwatcher(void *arg) {
 	intptr_t log_file_num = (intptr_t)arg;
-	int i;
+	int i, ret;
 	size_t buffer_size = 1024;
+	off_t cur_size = -1;
 	char *buffer;
 
 	buffer = malloc(buffer_size);
-
+	ret = fseek(lfi[log_file_num].file, 0, SEEK_END);
+	if (ret < 0) {
+		fprintf(stderr, "Unable to seek to end of log file: %s\n",
+				strerror(errno));
+		exit(1);
+	}
 	while (1) {
-		getline(&buffer, &buffer_size, lfi[log_file_num].file);
+		tail_follow(lfi[log_file_num].file, &cur_size, &buffer, &buffer_size);
 		/* chomp off the newline */
 		buffer[strlen(buffer) - 1] = '\0';
 		debugmsg("got line: %s\n", buffer);
@@ -191,9 +253,7 @@ int main(int argc, char *argv[]) {
 	FMOD_RESULT result;
 	unsigned int version;
 	int i, j, ret;
-	char tail_cmd[1024];
 
-	lfi = malloc(sizeof(struct log_file_info) * get_num_log_files());
 	fmod_sounds = malloc(sizeof(FMOD_SOUND *) * get_num_sounds());
 
 	ret = pthread_cond_init(&events.events_available, NULL);
@@ -205,19 +265,6 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Unable to initialize the events lock object\n");
 	}
 
-	for (i = 0; i < get_num_log_files(); i++) {
-		sprintf(tail_cmd, "/usr/bin/tail --lines=0 --follow --sleep-interval=0.05 %s", log_file_names[i]);
-		debugmsg("attempting to open pipe for command: %s\n", tail_cmd);
-		lfi[i].file = popen(tail_cmd, "r");
-		if (lfi[i].file == NULL) {
-			fprintf(stderr, "popen return NULL for \"%s\"\n", tail_cmd);
-		}
-		ret = pthread_create(&lfi[i].thread, NULL, logwatcher, (void *)(intptr_t)i);
-		if (ret < 0) {
-			fprintf(stderr, "Unable to create logwatcher pthread for log file %d\n", i);
-			exit(1);
-		}
-	}
 
 	/*
 	 Create a System object and initialize.
@@ -236,19 +283,6 @@ int main(int argc, char *argv[]) {
 
 	result = FMOD_System_Init(system, 32, FMOD_INIT_NORMAL, NULL);
 	ERRCHECK(result);
-
-	for (i = 0; i < get_num_triggers(); i++) {
-		bool found = false;
-		for (j = 0; j < get_num_sounds(); j++) {
-			if (strcmp(triggers[i].sound_to_play, sounds[j].name) == 0) {
-				found = true;
-				triggers[i].sound_to_play_id = j;
-			}
-		}
-		if (!found) {
-			fprintf(stderr, "Unable to find sound: %s for trigger: %s\n", triggers[i].sound_to_play, triggers[i].name);
-		}
-	}
 
 	for (i = 0; i < get_num_sounds(); i++) {
 		float freq, vol, pan;
@@ -286,6 +320,32 @@ int main(int argc, char *argv[]) {
 		result = FMOD_Sound_SetDefaults(fmod_sounds[i], freq, vol, pan,
 						prio);
 		ERRCHECK(result);
+	}
+
+	lfi = malloc(sizeof(struct log_file_info) * get_num_log_files());
+	for (i = 0; i < get_num_log_files(); i++) {
+		lfi[i].file = fopen(log_file_names[i], "r");
+		if (lfi[i].file == NULL) {
+			fprintf(stderr, "fopen return NULL for \"%s\"\n", log_file_names[i]);
+		}
+		ret = pthread_create(&lfi[i].thread, NULL, logwatcher, (void *)(intptr_t)i);
+		if (ret < 0) {
+			fprintf(stderr, "Unable to create logwatcher pthread for log file %d\n", i);
+			exit(1);
+		}
+	}
+
+	for (i = 0; i < get_num_triggers(); i++) {
+		bool found = false;
+		for (j = 0; j < get_num_sounds(); j++) {
+			if (strcmp(triggers[i].sound_to_play, sounds[j].name) == 0) {
+				found = true;
+				triggers[i].sound_to_play_id = j;
+			}
+		}
+		if (!found) {
+			fprintf(stderr, "Unable to find sound: %s for trigger: %s\n", triggers[i].sound_to_play, triggers[i].name);
+		}
 	}
 
 	/*
