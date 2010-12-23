@@ -72,13 +72,13 @@ const char *case_insensitive_strstr(const char *search_in, const char *search_fo
 		return search_in;
 	}
 	for (; *search_in; ++search_in) {
-		if (toupper(*search_in) == toupper(*search_for)) {
+		if (toupper((int)*search_in) == toupper((int)*search_for)) {
 			/*
 			 * Matched starting char -- loop through remaining chars.
 			 */
 			const char *_in, *_for;
 			for (_in = search_in, _for = search_for; *_in && *_for; ++_in, ++_for) {
-				if (toupper(*_in) != toupper(*_for)) {
+				if (toupper((int)*_in) != toupper((int)*_for)) {
 					break;
 				}
 			}
