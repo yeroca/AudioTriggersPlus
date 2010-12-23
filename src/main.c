@@ -19,7 +19,7 @@
 #include <errno.h>
 #include <pthread.h>
 
-#define DEBUG 0
+#define DEBUG 1
 #if DEBUG
 #define debugmsg(args...) fprintf(stderr, args)
 #else
@@ -160,19 +160,12 @@ static inline int get_num_sounds()
 
 void *logwatcher(void *arg) {
 	intptr_t log_file_num = (intptr_t)arg;
-	char tail_cmd[1024];
 	int i;
 	size_t buffer_size = 1024;
 	char *buffer;
 
 	buffer = malloc(buffer_size);
 
-	sprintf(tail_cmd, "/usr/bin/tail --lines=0 --follow --sleep-interval=0.05 %s", log_file_names[log_file_num]);
-	debugmsg("attempting to open pipe for command: %s\n", tail_cmd);
-	lfi[log_file_num].file = popen(tail_cmd, "r");
-	if (lfi[log_file_num].file == NULL) {
-		fprintf(stderr, "popen return NULL for \"%s\"\n", tail_cmd);
-	}
 	while (1) {
 		getline(&buffer, &buffer_size, lfi[log_file_num].file);
 		/* chomp off the newline */
@@ -181,6 +174,7 @@ void *logwatcher(void *arg) {
 		for (i = 0; i < sizeof(triggers) / sizeof(struct trigger); i++) {
 			debugmsg("looking for %s in %s\n", triggers[i].pattern, buffer);
 			if (case_insensitive_strstr(&buffer[LOG_MSG_START], triggers[i].pattern)) {
+				debugmsg("enqueuing sound %s\n", triggers[i].name);
 				enqueue_sound(triggers[i].sound_to_play_id);
 				if (triggers[i].stop_search_when_match)
 					break;
@@ -197,6 +191,7 @@ int main(int argc, char *argv[]) {
 	FMOD_RESULT result;
 	unsigned int version;
 	int i, j, ret;
+	char tail_cmd[1024];
 
 	lfi = malloc(sizeof(struct log_file_info) * get_num_log_files());
 	fmod_sounds = malloc(sizeof(FMOD_SOUND *) * get_num_sounds());
@@ -210,8 +205,13 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Unable to initialize the events lock object\n");
 	}
 
-
 	for (i = 0; i < get_num_log_files(); i++) {
+		sprintf(tail_cmd, "/usr/bin/tail --lines=0 --follow --sleep-interval=0.05 %s", log_file_names[i]);
+		debugmsg("attempting to open pipe for command: %s\n", tail_cmd);
+		lfi[i].file = popen(tail_cmd, "r");
+		if (lfi[i].file == NULL) {
+			fprintf(stderr, "popen return NULL for \"%s\"\n", tail_cmd);
+		}
 		ret = pthread_create(&lfi[i].thread, NULL, logwatcher, (void *)(intptr_t)i);
 		if (ret < 0) {
 			fprintf(stderr, "Unable to create logwatcher pthread for log file %d\n", i);
