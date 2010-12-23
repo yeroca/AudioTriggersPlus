@@ -11,25 +11,49 @@
 #include "../inc/fmod.h"
 #include "../inc/fmod_errors.h"
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <pthread.h>
+
+#define DEBUG 0
+#if DEBUG
+#define debugmsg(args...) fprintf(stderr, args)
+#else
+#define debugmsg(args...)
+#endif
 
 char *log_file_names[] = {
 		"/home/corey/log1",
 		"/home/corey/log2"
 };
 
+struct event_buffer_entry {
+	int sound_id;
+};
+
+/* NUM_EVENTS must be a power of 2 */
+#define NUM_EVENTS 32
+struct event_buffer {
+	struct event_buffer_entry entry[NUM_EVENTS];
+	int cur, next;
+	pthread_mutex_t lock;
+	pthread_cond_t events_available;
+};
+
+struct event_buffer events;
+
 struct log_file_info {
-	int fd;
+	pthread_t thread;
 	FILE *file;
 };
 
 struct log_file_info *lfi;
 
-static int num_log_files(void)
+static inline int num_log_files(void)
 {
 	return sizeof(log_file_names) / sizeof(char *);
 }
@@ -41,70 +65,93 @@ void ERRCHECK(FMOD_RESULT result) {
 	}
 }
 
-int get_readable_fd(fd_set *fds, int max_fd) {
-	int i;
 
-	for (i = 0; i <= max_fd; i++) {
-		if (FD_ISSET(i, fds)) {
-			return i;
+const char *case_insensitive_strstr(const char *search_in, const char *search_for)
+{
+	if (*search_for == '\0') {
+		return search_in;
+	}
+	for (; *search_in; ++search_in) {
+		if (toupper(*search_in) == toupper(*search_for)) {
+			/*
+			 * Matched starting char -- loop through remaining chars.
+			 */
+			const char *_in, *_for;
+			for (_in = search_in, _for = search_for; *_in && *_for; ++_in, ++_for) {
+				if (toupper(*_in) != toupper(*_for)) {
+					break;
+				}
+			}
+			if (!*_for) /* matched all of 'search_for' till the null terminator */
+			{
+				return search_in; /* return the start of the match */
+			}
 		}
 	}
-	return -1;
+	return NULL;
 }
 
-static size_t buf_size = 1024;
-static char* buffer = NULL;
-
-int get_log_line(fd_set *fds, int max_fd, char **line, int *log_file_num) {
-
-	int ret, readable_fd, i;
-	FILE *readable_file;
-	fd_set read_fds = *fds;
-	FILE *file;
-	bool found = false;
-
-	ret = pselect(max_fd + 1, &read_fds, NULL, NULL, NULL, NULL);
-	fprintf(stderr, "pselect returned %d\n", ret);
-
-	if (ret < 0) {
-		printf("pselect returned error: %d\n", ret);
+static void enqueue_sound(int sound_id)
+{
+	pthread_mutex_lock(&events.lock);
+	events.next = (events.next + 1) % NUM_EVENTS;
+	debugmsg("cur = %d, next = %d\n", events.cur, events.next);
+	if (events.next == events.cur) {
+		fprintf(stderr, "event queue overflow!\n");
 		exit(1);
 	}
-	readable_fd = get_readable_fd(&read_fds, max_fd);
-	if (readable_fd < 0) {
-		fprintf(stderr, "get_readable_fds returned %d\n", readable_fd);
-		exit(1);
-	}
-	for (i = 0; i < num_log_files(); i++) {
-		if (lfi[i].fd == readable_fd) {
-			found = true;
-			break;
-		}
-	}
-	if (!found) {
-		fprintf(stderr, "unable to find fd %d in lfi array\n", readable_fd);
-		exit(1);
-	}
-
-	if (buffer == NULL)
-		buffer = malloc(buf_size);
-
-	ret = getline(&buffer, &buf_size, lfi[i].file);
-
-	/* trim off new line */
-	fprintf(stderr, "buf_size = %d, ret = %d, strlen(buffer) = %d, line read: %s\n",
-			buf_size, ret, strlen(buffer), buffer);
-
-	*log_file_num = i;
-	*line = buffer;
+	events.entry[events.next].sound_id = sound_id;
+	pthread_cond_signal(&events.events_available);
+	pthread_mutex_unlock(&events.lock);
 }
+
 
 struct trigger {
 	char *pattern;
+	bool stop_search_when_match;
 	int sound_to_play;
 };
 
-struct trigger triggers[] = { { "play sound 1", 1 }, { "play sound 2", 2 }, { "play sound 3", 3 } };
+struct trigger triggers[] = { { "play sound 1", false, 1 }, { "play sound 2", false, 2 }, { "play sound 3", false, 3 } };
+
+void *logwatcher(void *arg) {
+	intptr_t log_file_num = (intptr_t)arg;
+	char tail_cmd[1024];
+	int i;
+	size_t buffer_size = 1024;
+	char *buffer;
+
+	buffer = malloc(buffer_size);
+
+	sprintf(tail_cmd, "/usr/bin/tail --lines=0 --follow --sleep-interval=0.05 %s", log_file_names[log_file_num]);
+	debugmsg("attempting to open pipe for command: %s\n", tail_cmd);
+	lfi[log_file_num].file = popen(tail_cmd, "r");
+	if (lfi[log_file_num].file == NULL) {
+		fprintf(stderr, "popen return NULL for \"%s\"\n", tail_cmd);
+	}
+	while (1) {
+		getline(&buffer, &buffer_size, lfi[log_file_num].file);
+		debugmsg("got line: %s", buffer);
+		for (i = 0; i < sizeof(triggers) / sizeof(struct trigger); i++) {
+			if (case_insensitive_strstr(buffer, triggers[i].pattern)) {
+				switch (triggers[i].sound_to_play) {
+				case 1:
+					enqueue_sound(1);
+					break;
+				case 2:
+					enqueue_sound(2);
+					break;
+				case 3:
+					enqueue_sound(3);
+					break;
+				}
+				if (triggers[i].stop_search_when_match)
+					break;
+			}
+		}
+	}
+}
+
 
 int main(int argc, char *argv[]) {
 	FMOD_SYSTEM *system;
@@ -116,28 +163,26 @@ int main(int argc, char *argv[]) {
 	fd_set log_fd_set;
 	char *line;
 	char buffer[1024];
-	char tail_cmd[1024];
 
 	FD_ZERO(&log_fd_set);
 
 	lfi = malloc(sizeof(struct log_file_info) * num_log_files());
+	ret = pthread_cond_init(&events.events_available, NULL);
+	if (ret < 0) {
+		fprintf(stderr, "Unable to initialize the events cond object\n");
+	}
+	ret = pthread_mutex_init(&events.lock, NULL);
+	if (ret < 0) {
+		fprintf(stderr, "Unable to initialize the events lock object\n");
+	}
+
 
 	for (i = 0; i < num_log_files(); i++) {
-		sprintf(tail_cmd, "/usr/bin/tail -f %s", log_file_names[i]);
-fprintf(stderr, "attempting to open pipe for command: %s\n", tail_cmd);
-		lfi[i].file = popen(tail_cmd, "r");
-		if (lfi[i].file == NULL) {
-			fprintf(stderr, "popen return NULL for \"%s\"\n", tail_cmd);
-		}
-		lfi[i].fd = fileno(lfi[i].file);
-		if (lfi[i].fd < 0) {
-			fprintf(stderr, "Unable to convert FILE pointer to fd\n");
+		ret = pthread_create(&lfi[i].thread, NULL, logwatcher, (void *)(intptr_t)i);
+		if (ret < 0) {
+			fprintf(stderr, "Unable to create logwatcher pthread for log file %d\n", i);
 			exit(1);
 		}
-		if (lfi[i].fd > max_fd)
-			max_fd = lfi[i].fd;
-fprintf(stderr, "setting fd %d\n", lfi[i].fd);
-		FD_SET(lfi[i].fd, &log_fd_set);
 	}
 
 	/*
@@ -150,9 +195,8 @@ fprintf(stderr, "setting fd %d\n", lfi[i].fd);
 	ERRCHECK(result);
 
 	if (version < FMOD_VERSION) {
-		printf(
-				"Error!  You are using an old version of FMOD %08x.  This program requires %08x\n",
-				version, FMOD_VERSION);
+		printf("Error!  You are using an old version of FMOD %08x.  This program requires %08x\n",
+			version, FMOD_VERSION);
 		return 0;
 	}
 
@@ -206,29 +250,29 @@ fprintf(stderr, "setting fd %d\n", lfi[i].fd);
 	/*
 	 Main loop.
 	 */
+	pthread_mutex_lock(&events.lock);
 	while (1) {
-		get_log_line(&log_fd_set, max_fd, &line, &log_num);
-fprintf(stderr, "log line came from file %d\n", log_num);
-		for (i = 0; i < sizeof(triggers) / sizeof(struct trigger); i++) {
-			if (strstr(line, triggers[i].pattern)) {
-				switch (triggers[i].sound_to_play) {
-				case 1:
-					result = FMOD_System_PlaySound(system, FMOD_CHANNEL_FREE,
-							sound1, 0, &channel);
-					ERRCHECK(result);
-					break;
-				case 2:
-					result = FMOD_System_PlaySound(system, FMOD_CHANNEL_FREE,
-							sound2, 0, &channel);
-					ERRCHECK(result);
-					break;
-				case 3:
-					result = FMOD_System_PlaySound(system, FMOD_CHANNEL_FREE,
-							sound3, 0, &channel);
-					ERRCHECK(result);
-					break;
-				}
-			}
+		while (events.cur == events.next) {
+			debugmsg("event queue is empty\n");
+			pthread_cond_wait(&events.events_available, &events.lock);
+		}
+		events.cur = (events.cur + 1) % NUM_EVENTS;
+		switch (events.entry[events.cur].sound_id) {
+		case 1:
+			result = FMOD_System_PlaySound(system,
+			                FMOD_CHANNEL_FREE, sound1, 0, &channel);
+			ERRCHECK(result);
+			break;
+		case 2:
+			result = FMOD_System_PlaySound(system,
+			                FMOD_CHANNEL_FREE, sound2, 0, &channel);
+			ERRCHECK(result);
+			break;
+		case 3:
+			result = FMOD_System_PlaySound(system,
+			                FMOD_CHANNEL_FREE, sound3, 0, &channel);
+			ERRCHECK(result);
+			break;
 		}
 	}
 
