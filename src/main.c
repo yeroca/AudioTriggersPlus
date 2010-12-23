@@ -15,7 +15,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
-#include <fcntl.h>
+#include <ctype.h>
 #include <errno.h>
 #include <pthread.h>
 
@@ -53,7 +53,7 @@ struct log_file_info {
 
 struct log_file_info *lfi;
 
-static inline int num_log_files(void)
+static inline int get_num_log_files(void)
 {
 	return sizeof(log_file_names) / sizeof(char *);
 }
@@ -107,21 +107,31 @@ static void enqueue_sound(int sound_id)
 
 
 struct trigger {
+	char *name;
 	char *pattern;
 	bool stop_search_when_match;
-	int sound_to_play;
+	char *sound_to_play;
+	int sound_to_play_id;
+
 };
 
 struct trigger triggers[] = {
-		{ .pattern = "play sound 0", .stop_search_when_match = false, .sound_to_play = 0 },
-		{ .pattern = "play sound 1", .stop_search_when_match = false, .sound_to_play = 1 },
-		{ .pattern = "play sound 2", .stop_search_when_match = false, .sound_to_play = 2 }
+		{ .name = "sound0", .pattern = "play sound 0", .stop_search_when_match = false, .sound_to_play = "drum_left" },
+		{ .name = "sound1", .pattern = "play sound 1", .stop_search_when_match = false, .sound_to_play = "drum_right" },
+		{ .name = "sound2", .pattern = "play sound 2", .stop_search_when_match = false, .sound_to_play = "drum_middle" }
 };
+
+static inline int get_num_triggers()
+{
+	return (sizeof(triggers) / sizeof(struct trigger));
+}
+
 
 /* sentinel to indicate taking the system default sound attributes */
 #define USE_DEFAULT -1000.0
 #define USE_DEFAULT_PRIO -1000
 struct sound {
+	char *name;
 	char *file;
 	int prio;
 	float freq, vol, pan;
@@ -129,9 +139,9 @@ struct sound {
 };
 
 struct sound sounds[] = {
-		{ .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = -1.0, .prio = USE_DEFAULT_PRIO },
-		{ .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 1.0, .prio = USE_DEFAULT_PRIO },
-		{ .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 0.0, .prio = USE_DEFAULT_PRIO }
+		{ .name = "drum_left", .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = -1.0, .prio = USE_DEFAULT_PRIO },
+		{ .name = "drum_right", .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 1.0, .prio = USE_DEFAULT_PRIO },
+		{ .name = "drum_middle", .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 0.0, .prio = USE_DEFAULT_PRIO }
 };
 
 static inline int get_num_sounds()
@@ -162,7 +172,7 @@ void *logwatcher(void *arg) {
 		for (i = 0; i < sizeof(triggers) / sizeof(struct trigger); i++) {
 			debugmsg("looking for %s in %s\n", triggers[i].pattern, buffer);
 			if (case_insensitive_strstr(buffer, triggers[i].pattern)) {
-				enqueue_sound(triggers[i].sound_to_play);
+				enqueue_sound(triggers[i].sound_to_play_id);
 				if (triggers[i].stop_search_when_match)
 					break;
 			}
@@ -177,14 +187,9 @@ int main(int argc, char *argv[]) {
 	FMOD_CHANNEL *channel = 0;
 	FMOD_RESULT result;
 	unsigned int version;
-	int i, max_fd = -1, ret, log_num;
-	fd_set log_fd_set;
-	char *line;
-	char buffer[1024];
+	int i, j, ret;
 
-	FD_ZERO(&log_fd_set);
-
-	lfi = malloc(sizeof(struct log_file_info) * num_log_files());
+	lfi = malloc(sizeof(struct log_file_info) * get_num_log_files());
 	fmod_sounds = malloc(sizeof(FMOD_SOUND *) * get_num_sounds());
 
 	ret = pthread_cond_init(&events.events_available, NULL);
@@ -197,7 +202,7 @@ int main(int argc, char *argv[]) {
 	}
 
 
-	for (i = 0; i < num_log_files(); i++) {
+	for (i = 0; i < get_num_log_files(); i++) {
 		ret = pthread_create(&lfi[i].thread, NULL, logwatcher, (void *)(intptr_t)i);
 		if (ret < 0) {
 			fprintf(stderr, "Unable to create logwatcher pthread for log file %d\n", i);
@@ -222,6 +227,19 @@ int main(int argc, char *argv[]) {
 
 	result = FMOD_System_Init(system, 32, FMOD_INIT_NORMAL, NULL);
 	ERRCHECK(result);
+
+	for (i = 0; i < get_num_triggers(); i++) {
+		bool found = false;
+		for (j = 0; j < get_num_sounds(); j++) {
+			if (strcmp(triggers[i].sound_to_play, sounds[j].name) == 0) {
+				found = true;
+				triggers[i].sound_to_play_id = j;
+			}
+		}
+		if (!found) {
+			fprintf(stderr, "Unable to find sound: %s for trigger: %s\n", triggers[i].sound_to_play, triggers[i].name);
+		}
+	}
 
 	for (i = 0; i < get_num_sounds(); i++) {
 		float freq, vol, pan;
