@@ -1,20 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<audiotriggers xmlns="http://www.example.org/AudioTriggers"
+<audiotriggers xmlns="http://www.AudioTriggers.org"
 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-xsi:schemaLocation="http://www.example.org/AudioTriggers AudioTriggers.xsd">
+xsi:schemaLocation="http://www.AudioTriggers.org AudioTriggers.xsd">
 	<sound name = "foo">
 		<file>foo.wav</file>
 		<vol>0.0</vol>
 		<pan>1.0</pan>
 		<priority>64</priority>
 	</sound>
+	<sound name=""></sound>
 	<trigger name = "meh">
 		<pattern>abc123</pattern>
 		<soundtoplay>foo</soundtoplay>
+		<comment>This is a comment</comment>
 	</trigger>
 	<logfile>
 	<file>eqlog_erollisi_Turtylduv.txt</file>
 		<attachtrigger>meh</attachtrigger>
 		<attachtrigger>doesntexist</attachtrigger>
 	</logfile>
+	<logfile>
+		<file>stuff.txt</file>
+	</logfile>
 </audiotriggers>
+
