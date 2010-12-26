@@ -1,13 +1,8 @@
-/*===============================================================================================
- PlaySound Example
- Copyright (c), Firelight Technologies Pty, Ltd 2004-2010.
-
- This example shows how to simply load and play multiple sounds.  This is about the simplest
- use of FMOD.
- This makes FMOD decode the into memory when it loads.  If the sounds are big and possibly take
- up a lot of ram, then it would be better to use the FMOD_CREATESTREAM flag so that it is 
- streamed in realtime as it plays.
- ===============================================================================================*/
+/*
+ * AudioTriggers
+ *
+ * Copyright Corey Ashford 2010
+ */
 #include "../inc/fmod.h"
 #include "../inc/fmod_errors.h"
 #include <stdlib.h>
@@ -57,18 +52,23 @@ struct log_file_info {
 
 struct log_file_info *lfi;
 
+#define NUM_CHANNELS 32
+
+FMOD_CHANNEL *channel[NUM_CHANNELS];
+
 static inline int get_num_log_files(void)
 {
 	return sizeof(log_file_names) / sizeof(char *);
 }
 
-void ERRCHECK(FMOD_RESULT result) {
+void _ERRCHECK(FMOD_RESULT result, const char *file, const char *func, int linenum) {
 	if (result != FMOD_OK) {
-		fprintf(stderr, "FMOD error! (%d) %s\n", result, FMOD_ErrorString(result));
+		fprintf(stderr, "FMOD error! (%d) %s at %s:%s:%d\n", result, FMOD_ErrorString(result), file, func, linenum);
 		exit(-1);
 	}
 }
 
+#define ERRCHECK(result) _ERRCHECK(result, __FILE__, __func__, __LINE__)
 
 const char *case_insensitive_strstr(const char *search_in, const char *search_for)
 {
@@ -145,8 +145,8 @@ struct sound {
 };
 
 struct sound sounds[] = {
-		{ .name = "drum_left", .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = -1.0, .prio = USE_DEFAULT_PRIO },
-		{ .name = "drum_right", .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 1.0, .prio = USE_DEFAULT_PRIO },
+		{ .name = "drum_left", .file = "../media/jaguar.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = -1.0, .prio = USE_DEFAULT_PRIO },
+		{ .name = "drum_right", .file = "../media/swish.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 1.0, .prio = USE_DEFAULT_PRIO },
 		{ .name = "drum_middle", .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 0.0, .prio = USE_DEFAULT_PRIO },
 		{ .name = "tell2", .file = "../eq_audio/Tell2.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = USE_DEFAULT, .prio = USE_DEFAULT_PRIO },
 		{ .name = "alert2", .file = "../eq_audio/Alert2.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = USE_DEFAULT, .prio = USE_DEFAULT_PRIO },
@@ -207,12 +207,8 @@ static void tail_follow(FILE *log_file, off_t *cur_size, char **buffer, size_t *
 	}
 }
 
-
-
-
 /* Before character 27 of every log line is just the time stamp, so skip it */
 #define LOG_MSG_START 27
-
 
 void *logwatcher(void *arg) {
 	intptr_t log_file_num = (intptr_t)arg;
@@ -245,11 +241,28 @@ void *logwatcher(void *arg) {
 	}
 }
 
+int find_free_channel(void)
+{
+	FMOD_BOOL is_playing;
+	FMOD_RESULT result;
+	int i;
+
+	for (i = 0; i < NUM_CHANNELS; i++) {
+		if (channel[i] == NULL) {
+			return i;
+		};
+		result = FMOD_Channel_IsPlaying(channel[i], &is_playing);
+		ERRCHECK(result);
+		if (!is_playing) {
+			return i;
+		}
+	}
+	return -1;
+}
 
 int main(int argc, char *argv[]) {
 	FMOD_SYSTEM *system;
 	FMOD_SOUND **fmod_sounds;
-	FMOD_CHANNEL *channel = 0;
 	FMOD_RESULT result;
 	unsigned int version;
 	int i, j, ret;
@@ -364,8 +377,15 @@ int main(int argc, char *argv[]) {
 		sound_id = events.entry[events.cur].sound_id;
 		debugmsg("main loop received sound_id %d\n", sound_id);
 		if (sound_id < get_num_sounds()) {
+			int free_channel;
+
+			free_channel = find_free_channel();
+			if (free_channel == -1) {
+				fprintf(stderr, "No free channels!\n");
+				exit(1);
+			}
 			result = FMOD_System_PlaySound(system,
-					FMOD_CHANNEL_FREE, fmod_sounds[sound_id], 0, &channel);
+					FMOD_CHANNEL_FREE, fmod_sounds[sound_id], 0, &channel[free_channel]);
 			ERRCHECK(result);
 		} else {
 			fprintf(stderr, "sound_id: %d exceeds the last sound_id: %d\n", sound_id, get_num_sounds() - 1);
