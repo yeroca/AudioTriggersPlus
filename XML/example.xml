@@ -15,9 +15,9 @@ xsi:schemaLocation="http://www.AudioTriggers.org AudioTriggers.xsd">
 		<comment>This is a comment</comment>
 	</trigger>
 	<logfile>
-	<file>eqlog_erollisi_Turtylduv.txt</file>
-		<attachtrigger>meh</attachtrigger>
-		<attachtrigger>doesntexist</attachtrigger>
+		<file>eqlog_erollisi_Turtylduv.txt</file>
+		<attachtrigger name="meh"/>
+		<attachtrigger name="doesntexist"/>
 	</logfile>
 	<logfile>
 		<file>stuff.txt</file>
