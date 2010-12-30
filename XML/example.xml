@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<audiotriggers xmlns="http://www.AudioTriggers.org"
-xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-xsi:schemaLocation="http://www.AudioTriggers.org AudioTriggers.xsd">
+<audiotriggers>
 	<sound name = "foo">
 		<file>foo.wav</file>
 		<vol>0.0</vol>
@@ -23,4 +21,3 @@ xsi:schemaLocation="http://www.AudioTriggers.org AudioTriggers.xsd">
 		<file>stuff.txt</file>
 	</logfile>
 </audiotriggers>
-
