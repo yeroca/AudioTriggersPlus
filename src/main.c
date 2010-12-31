@@ -418,11 +418,13 @@ void process_trigger_element(xmlNodePtr node)
 	}
 	triggers[trigger_cntr].sound_to_play = xmlStrdup(sound_to_play->content);
 
-	stop_search_on_match = get_element_text(children, TRIGGER_STOPSEARCHONMATCH_ELT);
+	stop_search_on_match = get_element(children, TRIGGER_STOPSEARCHONMATCH_ELT);
 	if (stop_search_on_match == NULL) {
-		triggers[trigger_cntr].stop_search_on_match = true;
-	} else {
 		triggers[trigger_cntr].stop_search_on_match = false;
+		debugmsg("setting stop search on match to false\n");
+	} else {
+		triggers[trigger_cntr].stop_search_on_match = true;
+		debugmsg("setting stop search on match to true\n");
 	}
 
 	trigger_cntr++;
