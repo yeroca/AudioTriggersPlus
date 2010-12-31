@@ -31,10 +31,10 @@
 #define debugmsg(args...)
 #endif
 
-char *log_file_names[] = {
-		"/home/corey/log1",
-		"/home/corey/log2"
+struct logfile {
+	xmlChar *file;
 };
+struct logfile *logfiles;
 
 struct event_buffer_entry {
 	int sound_id;
@@ -62,10 +62,9 @@ struct log_file_info *lfi;
 
 FMOD_CHANNEL *channel[NUM_CHANNELS];
 
-static inline int get_num_log_files(void)
-{
-	return sizeof(log_file_names) / sizeof(char *);
-}
+static int num_sounds;
+static int num_triggers;
+static int num_logfiles;
 
 void _ERRCHECK(FMOD_RESULT result, const char *file, const char *func, int linenum) {
 	if (result != FMOD_OK) {
@@ -78,6 +77,7 @@ void _ERRCHECK(FMOD_RESULT result, const char *file, const char *func, int linen
 
 const char *case_insensitive_strstr(const char *search_in, const char *search_for)
 {
+	debugmsg("search_in: %s\nsearch_for: %s\n", search_in, search_for);
 	if (*search_for == '\0') {
 		return search_in;
 	}
@@ -117,27 +117,14 @@ static void enqueue_sound(int sound_id)
 
 
 struct trigger {
-	char *name;
-	char *pattern;
-	bool stop_search_when_match;
-	char *sound_to_play;
+	xmlChar *name;
+	xmlChar *pattern;
+	bool stop_search_on_match;
+	xmlChar *sound_to_play;
 	int sound_to_play_id;
 
 };
-
-struct trigger triggers[] = {
-		{ .name = "sound0", .pattern = "play sound 0", .stop_search_when_match = false, .sound_to_play = "drum_left" },
-		{ .name = "sound1", .pattern = "play sound 1", .stop_search_when_match = false, .sound_to_play = "drum_right" },
-		{ .name = "sound2", .pattern = "play sound 2", .stop_search_when_match = false, .sound_to_play = "drum_middle" },
-		{ .name = "turt", .pattern = "turt", .stop_search_when_match = false, .sound_to_play = "tell2" },
-		{ .name = "mezzbreak", .pattern = "has been awakened by", .stop_search_when_match = true, .sound_to_play = "drum_left"}
-};
-
-static inline int get_num_triggers()
-{
-	return (sizeof(triggers) / sizeof(struct trigger));
-}
-
+struct trigger *triggers;
 
 /* sentinel to indicate taking the system default sound attributes */
 #define USE_DEFAULT -1000.0
@@ -146,28 +133,12 @@ struct sound {
 	xmlChar *name;
 	xmlChar *file;
 	int prio;
-	float freq, vol, pan;
+	float vol, pan;
 
 };
-
 struct sound *sounds;
 
-#if 0
-struct sound sounds[] = {
-		{ .name = "drum_left", .file = "../media/jaguar.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = -1.0, .prio = USE_DEFAULT_PRIO },
-		{ .name = "drum_right", .file = "../media/swish.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 1.0, .prio = USE_DEFAULT_PRIO },
-		{ .name = "drum_middle", .file = "../media/drumloop.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = 0.0, .prio = USE_DEFAULT_PRIO },
-		{ .name = "tell2", .file = "../eq_audio/Tell2.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = USE_DEFAULT, .prio = USE_DEFAULT_PRIO },
-		{ .name = "alert2", .file = "../eq_audio/Alert2.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = USE_DEFAULT, .prio = USE_DEFAULT_PRIO },
-		{ .name = "alert5", .file = "../eq_audio/Alert5.wav", .freq = USE_DEFAULT, .vol = USE_DEFAULT, .pan = USE_DEFAULT, .prio = USE_DEFAULT_PRIO },
-};
-#endif
 
-static inline int get_num_sounds()
-{
-	return (sizeof(sounds) / sizeof(struct sound));
-
-}
 #ifdef __CYGWIN__
 #define POS_VAL(pos) pos
 #else
@@ -239,12 +210,12 @@ void *logwatcher(void *arg) {
 		/* chomp off the newline */
 		buffer[strlen(buffer) - 1] = '\0';
 		debugmsg("got line: %s\n", buffer);
-		for (i = 0; i < sizeof(triggers) / sizeof(struct trigger); i++) {
+		for (i = 0; i < num_triggers; i++) {
 			debugmsg("looking for %s in %s\n", triggers[i].pattern, buffer);
-			if (case_insensitive_strstr(&buffer[LOG_MSG_START], triggers[i].pattern)) {
+			if (case_insensitive_strstr(&buffer[LOG_MSG_START], (char *)triggers[i].pattern)) {
 				debugmsg("enqueuing sound %s\n", triggers[i].name);
 				enqueue_sound(triggers[i].sound_to_play_id);
-				if (triggers[i].stop_search_when_match)
+				if (triggers[i].stop_search_on_match)
 					break;
 			}
 		}
@@ -323,23 +294,25 @@ static xmlNodePtr get_element_text(xmlNodePtr node, const xmlChar *element)
 	return NULL;
 }
 
-void print_child_node_names(xmlNodePtr node)
-{
-	xmlNodePtr sib;
+#define AUDIOTRIGGERS_ELT		(xmlChar *)"audiotriggers"
 
-	for (sib = node; sib; sib = sib->next) {
-		debugmsg("child node->name: %s\n", sib->name);
-	}
-}
+#define SOUND_ELT 			(xmlChar *)"sound"
+#define SOUND_NAME_ATTR 		(xmlChar *)"name"
+#define SOUND_FILE_ELT 			(xmlChar *)"file"
+#define SOUND_VOL_ELT 			(xmlChar *)"vol"
+#define SOUND_PAN_ELT 			(xmlChar *)"pan"
+#define SOUND_PRIO_ELT 			(xmlChar *)"priority"
 
-#define AUDIOTRIGGERS_ELT	(xmlChar *)"audiotriggers"
-#define SOUND_ELT 		(xmlChar *)"sound"
-#define SOUND_NAME_ATTR 	(xmlChar *)"name"
-#define SOUND_FILE_ELT 		(xmlChar *)"file"
-#define SOUND_VOL_ELT 		(xmlChar *)"vol"
-#define SOUND_PAN_ELT 		(xmlChar *)"pan"
-#define SOUND_PRIO_ELT 		(xmlChar *)"priority"
+#define TRIGGER_ELT 			(xmlChar *)"trigger"
+#define TRIGGER_NAME_ATTR 		(xmlChar *)"name"
+#define TRIGGER_PATTERN_ELT		(xmlChar *)"pattern"
+#define TRIGGER_SOUNDTOPLAY_ELT		(xmlChar *)"sound_to_play"
+#define TRIGGER_STOPSEARCHONMATCH_ELT	(xmlChar *)"stop_search_on_match"
+#define TRIGGER_COMMENT_ELT		(xmlChar *)"comment"
 
+#define LOGFILE_ELT			(xmlChar *)"logfile"
+#define LOGFILE_FILE_ELT 		(xmlChar *)"file"
+#define LOGFILE_ATTACHTRIGGER_ELT	(xmlChar *)"attach_trigger"
 
 void process_sound_element(xmlNodePtr node)
 {
@@ -357,7 +330,7 @@ void process_sound_element(xmlNodePtr node)
 		fprintf(stderr, "Unable to find file element in sound element %d\n", sound_cntr + 1);
 		exit(1);
 	}
-	sounds[sound_cntr].file = file->content;
+	sounds[sound_cntr].file = xmlStrdup(file->content);
 
 	vol = get_element_text(children, SOUND_VOL_ELT);
 	if (vol != NULL) {
@@ -384,22 +357,18 @@ void process_sound_element(xmlNodePtr node)
 	sound_cntr++;
 }
 
-static int num_sounds;
+
 static void count_sound_elements(xmlNodePtr node) {
 	num_sounds++;
 }
 
-#if 0
-static int num_triggers;
 static void count_trigger_elements(xmlNodePtr node) {
 	num_triggers++;
 }
 
-static int num_logfiles;
 static void count_logfile_elements(xmlNodePtr node) {
 	num_logfiles++;
 }
-#endif
 
 static void load_sounds_from_config(xmlNodePtr node)
 {
@@ -411,21 +380,73 @@ static void load_sounds_from_config(xmlNodePtr node)
 
 void process_trigger_element(xmlNodePtr node)
 {
+	static int trigger_cntr = 0;
+	xmlNodePtr children = node->children, pattern, sound_to_play, stop_search_on_match;
+
 	debugmsg("processing trigger element: %s\n", node->name);
+
+	/* Note that there is a comment element too, but it is ignored by this code */
+
+	triggers[trigger_cntr].name = xmlGetProp(node, TRIGGER_NAME_ATTR);
+	if (sounds[trigger_cntr].name == NULL) {
+		fprintf(stderr, "Unable to find name attribute on trigger element %d\n", trigger_cntr + 1);
+		exit(1);
+	}
+
+	pattern = get_element_text(children, TRIGGER_PATTERN_ELT);
+	if (pattern == NULL) {
+		fprintf(stderr, "Unable to find pattern element in trigger element %d\n", trigger_cntr + 1);
+		exit(1);
+	}
+	triggers[trigger_cntr].pattern = xmlStrdup(pattern->content);
+
+	sound_to_play = get_element_text(children, TRIGGER_SOUNDTOPLAY_ELT);
+	if (sound_to_play == NULL) {
+		fprintf(stderr, "Unable to find sound_to_play element in trigger element %d\n", trigger_cntr + 1);
+		exit(1);
+	}
+	triggers[trigger_cntr].sound_to_play = xmlStrdup(sound_to_play->content);
+
+	stop_search_on_match = get_element_text(children, TRIGGER_STOPSEARCHONMATCH_ELT);
+	if (stop_search_on_match == NULL) {
+		triggers[trigger_cntr].stop_search_on_match = true;
+	} else {
+		triggers[trigger_cntr].stop_search_on_match = false;
+	}
+
+	trigger_cntr++;
 }
 
 static void load_triggers_from_config(xmlNodePtr node)
 {
-	foreach_sibling(node, (xmlChar *)"trigger", process_trigger_element);
+	foreach_sibling(node, TRIGGER_ELT, count_trigger_elements);
+	triggers = malloc(sizeof(struct trigger) * num_triggers);
+
+	foreach_sibling(node, TRIGGER_ELT, process_trigger_element);
 }
 
 void process_logfile_element(xmlNodePtr node)
 {
+	xmlNodePtr children = node->children, file;
+	static int logfile_cntr = 0;
+
 	debugmsg("processing logfile element: %s\n", node->name);
+	file = get_element_text(children, LOGFILE_FILE_ELT);
+	if (file == NULL) {
+		fprintf(stderr, "Unable to find file element in logfile element %d\n", logfile_cntr + 1);
+		exit(1);
+	}
+	logfiles[logfile_cntr].file = xmlStrdup(file->content);
+	debugmsg("logfile found: %s\n", file->content);
+
+	logfile_cntr++;
 }
 
-static void load_logfile_names_from_config(xmlNodePtr node)
+static void load_logfiles_from_config(xmlNodePtr node)
 {
+	foreach_sibling(node, LOGFILE_ELT, count_logfile_elements);
+	logfiles = malloc(sizeof(struct logfile) * num_logfiles);
+
 	foreach_sibling(node, (xmlChar *)"logfile", process_logfile_element);
 }
 
@@ -433,7 +454,6 @@ static void close_config_xml(xmlDocPtr doc)
 {
 	xmlFreeDoc(doc);
 }
-
 
 static void init_xml_lib(void)
 {
@@ -467,7 +487,7 @@ static void open_all_sounds(FMOD_SYSTEM *system, FMOD_SOUND **fmod_sounds) {
 	FMOD_RESULT result;
 	int i;
 
-	for (i = 0; i < get_num_sounds(); i++) {
+	for (i = 0; i < num_sounds; i++) {
 		float freq, vol, pan;
 		int prio;
 
@@ -482,11 +502,7 @@ static void open_all_sounds(FMOD_SYSTEM *system, FMOD_SOUND **fmod_sounds) {
 				&pan, &prio);
 		ERRCHECK(result);
 
-		/* override defaults as requested */
-		if (sounds[i].freq != USE_DEFAULT) {
-			debugmsg("setting freq value on %s to %f\n", sounds[i].file, sounds[i].freq);
-			freq = sounds[i].freq;
-		}
+		/* override defaults (except freq) as requested */
 		if (sounds[i].vol != USE_DEFAULT) {
 			debugmsg("setting vol value on %s to %f\n", sounds[i].file, sounds[i].vol);
 			vol = sounds[i].vol;
@@ -510,10 +526,10 @@ static void open_all_logfiles(void)
 {
 	int i, ret;
 
-	for (i = 0; i < get_num_log_files(); i++) {
-		lfi[i].file = fopen(log_file_names[i], "r");
+	for (i = 0; i < num_logfiles; i++) {
+		lfi[i].file = fopen((char *)logfiles[i].file, "r");
 		if (lfi[i].file == NULL) {
-			fprintf(stderr, "fopen return NULL for \"%s\"\n", log_file_names[i]);
+			fprintf(stderr, "fopen return NULL for \"%s\"\n", logfiles[i].file);
 			exit(1);
 		}
 		ret = pthread_create(&lfi[i].thread, NULL, logwatcher, (void *)(intptr_t)i);
@@ -528,10 +544,10 @@ static void match_triggers_with_sounds(void)
 {
 	int i, j;
 
-	for (i = 0; i < get_num_triggers(); i++) {
+	for (i = 0; i < num_triggers; i++) {
 		bool found = false;
-		for (j = 0; j < get_num_sounds(); j++) {
-			if (strcmp(triggers[i].sound_to_play, (char *)sounds[j].name) == 0) {
+		for (j = 0; j < num_sounds; j++) {
+			if (xmlStrEqual(triggers[i].sound_to_play, sounds[j].name)) {
 				found = true;
 				triggers[i].sound_to_play_id = j;
 			}
@@ -548,7 +564,7 @@ static void release_all_sounds(FMOD_SOUND **fmod_sounds)
 	int i;
 	FMOD_RESULT result;
 
-	for (i = 0; i < get_num_sounds(); i++) {
+	for (i = 0; i < num_sounds; i++) {
 		result = FMOD_Sound_Release(fmod_sounds[i]);
 		ERRCHECK(result);
 	}
@@ -595,13 +611,13 @@ int main(int argc, char *argv[]) {
 	node = node->children;
 	load_sounds_from_config(node);
 	load_triggers_from_config(node);
-	load_logfile_names_from_config(node);
+	load_logfiles_from_config(node);
 	close_config_xml(doc);
 
-	fmod_sounds = malloc(sizeof(FMOD_SOUND *) * get_num_sounds());
+	fmod_sounds = malloc(sizeof(FMOD_SOUND *) * num_sounds);
 	open_all_sounds(system, fmod_sounds);
 
-	lfi = malloc(sizeof(struct log_file_info) * get_num_log_files());
+	lfi = malloc(sizeof(struct log_file_info) * num_logfiles);
 	open_all_logfiles();
 
 	match_triggers_with_sounds();
@@ -621,7 +637,7 @@ int main(int argc, char *argv[]) {
 
 		sound_id = events.entry[events.cur].sound_id;
 		debugmsg("main loop received sound_id %d\n", sound_id);
-		if (sound_id < get_num_sounds()) {
+		if (sound_id < num_sounds) {
 			int free_channel;
 
 			free_channel = find_free_channel();
@@ -633,7 +649,7 @@ int main(int argc, char *argv[]) {
 					FMOD_CHANNEL_FREE, fmod_sounds[sound_id], 0, &channel[free_channel]);
 			ERRCHECK(result);
 		} else {
-			fprintf(stderr, "sound_id: %d exceeds the last sound_id: %d\n", sound_id, get_num_sounds() - 1);
+			fprintf(stderr, "sound_id: %d exceeds the last sound_id: %d\n", sound_id, num_sounds - 1);
 			exit(1);
 		}
 	}
