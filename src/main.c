@@ -24,6 +24,8 @@
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
 
+#include "bitmaps.h"
+
 #define DEBUG 1
 #if DEBUG
 #define debugmsg(args...) fprintf(stderr, args)
