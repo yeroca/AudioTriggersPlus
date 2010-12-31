@@ -34,6 +34,7 @@
 struct logfile {
 	xmlChar *file;
 	xmlChar **attached_triggers;
+	int num_attached_triggers;
 };
 struct logfile *logfiles;
 
@@ -115,7 +116,6 @@ static void enqueue_sound(int sound_id)
 	pthread_mutex_unlock(&events.lock);
 }
 
-
 struct trigger {
 	xmlChar *name;
 	xmlChar *pattern;
@@ -137,7 +137,6 @@ struct sound {
 
 };
 struct sound *sounds;
-
 
 #ifdef __CYGWIN__
 #define POS_VAL(pos) pos
@@ -266,8 +265,6 @@ int find_free_channel(void)
 #define LOGFILE_FILE_ELT 		(xmlChar *)"file"
 #define LOGFILE_ATTACHTRIGGER_ELT	(xmlChar *)"attach_trigger"
 #define LOGFILE_ATTACHTRIGGER_NAME_ATTR	(xmlChar *)"name"
-
-
 
 static void open_config_xml(xmlDocPtr *doc)
 {
@@ -449,15 +446,14 @@ void process_attach_trigger_element(xmlNodePtr node)
 		fprintf(stderr, "Unable to find name attribute on sound element %d\n", logfile_cntr + 1);
 		exit(1);
 	}
-	logfiles[logfile_cntr].attached_triggers[attach_trigger_cntr] = name;
 
+	logfiles[logfile_cntr].attached_triggers[attach_trigger_cntr] = name;
 	attach_trigger_cntr++;
 }
 
 void process_logfile_element(xmlNodePtr node)
 {
 	xmlNodePtr children = node->children, file;
-
 
 	debugmsg("processing logfile element: %s\n", node->name);
 	file = get_element_text(children, LOGFILE_FILE_ELT);
@@ -472,6 +468,7 @@ void process_logfile_element(xmlNodePtr node)
 	attach_trigger_cntr = 0;
 	foreach_sibling(children, LOGFILE_ATTACHTRIGGER_ELT, count_attach_trigger_elements);
 	logfiles[logfile_cntr].attached_triggers = malloc(sizeof(xmlChar *) * attach_trigger_cntr);
+	logfiles[logfile_cntr].num_attached_triggers = attach_trigger_cntr;
 
 	attach_trigger_cntr = 0;
 	foreach_sibling(children, LOGFILE_ATTACHTRIGGER_ELT, process_attach_trigger_element);
@@ -596,6 +593,28 @@ static void match_triggers_with_sounds(void)
 	}
 }
 
+static void match_logfiles_with_triggers(void)
+{
+	int i, j, k;
+
+	for (i = 0; i < num_logfiles; i++) {
+		for (j = 0; j < logfiles[i].num_attached_triggers; j++) {
+			bool found = false;
+			for (k = 0; k < num_triggers; k++) {
+				if (xmlStrEqual(logfiles[i].attached_triggers[j], triggers[k].name)) {
+					found = true;
+					// FIXME figure out what to do here
+				}
+			}
+			if (!found) {
+				fprintf(stderr, "Unable to find trigger: %s for logfile: %s\n", logfiles[i].attached_triggers[j], logfiles[i].file);
+				exit(1);
+			}
+		}
+	}
+}
+
+
 static void release_all_sounds(FMOD_SOUND **fmod_sounds)
 {
 	int i;
@@ -623,9 +642,7 @@ int main(int argc, char *argv[]) {
 	FMOD_RESULT result;
 	xmlDocPtr doc;
 	xmlNodePtr node;
-
 	int ret;
-
 
 	ret = pthread_cond_init(&events.events_available, NULL);
 	if (ret < 0) {
@@ -659,6 +676,7 @@ int main(int argc, char *argv[]) {
 
 	match_triggers_with_sounds();
 
+	match_logfiles_with_triggers();
 	/*
 	 Main loop.
 	 */
@@ -692,7 +710,6 @@ int main(int argc, char *argv[]) {
 	}
 
 	release_all_sounds(fmod_sounds);
-
 	close_sound_system(system);
 
 	return 0;
