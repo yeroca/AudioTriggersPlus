@@ -23,6 +23,7 @@
 #include <libxml/parser.h>
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
+#include <libxml/xmlschemas.h>
 
 #define DEBUG 1
 #if DEBUG
@@ -246,7 +247,8 @@ int find_free_channel(void)
 	return -1;
 }
 
-#define CONFIG_XML "AudioTriggers.xml"
+#define CONFIG_XML "atconfig.xml"
+#define CONFIG_SCHEMA "../XML/AudioTriggers.xsd"
 
 /* the text element is a pseudo element defined by libxml */
 #define TEXT_ELT			(xmlChar *)"text"
@@ -272,11 +274,58 @@ int find_free_channel(void)
 #define LOGFILE_ATTACHTRIGGER_ELT	(xmlChar *)"attach_trigger"
 #define LOGFILE_ATTACHTRIGGER_NAME_ATTR	(xmlChar *)"name"
 
+/* This code is from http://wiki.njh.eu/XML-Schema_validation_with_libxml2 */
+static int is_valid(const xmlDocPtr doc, const char *schema_filename)
+{
+	xmlDocPtr schema_doc = xmlReadFile(schema_filename, NULL,
+			XML_PARSE_NONET);
+	if (schema_doc == NULL) {
+		/* the schema cannot be loaded or is not well-formed */
+		fprintf(stderr, "Error: Unable to load the schema file \"%s\"\n",
+				schema_filename);
+		exit(1);
+	}
+	xmlSchemaParserCtxtPtr parser_ctxt = xmlSchemaNewDocParserCtxt(
+			schema_doc);
+	if (parser_ctxt == NULL) {
+		/* unable to create a parser context for the schema */
+		xmlFreeDoc(schema_doc);
+		return -2;
+	}
+	xmlSchemaPtr schema = xmlSchemaParse(parser_ctxt);
+	if (schema == NULL) {
+		/* the schema itself is not valid */
+		xmlSchemaFreeParserCtxt(parser_ctxt);
+		xmlFreeDoc(schema_doc);
+		return -3;
+	}
+	xmlSchemaValidCtxtPtr valid_ctxt = xmlSchemaNewValidCtxt(schema);
+	if (valid_ctxt == NULL) {
+		/* unable to create a validation context for the schema */
+		xmlSchemaFree(schema);
+		xmlSchemaFreeParserCtxt(parser_ctxt);
+		xmlFreeDoc(schema_doc);
+		return -4;
+	}
+	int is_valid = (xmlSchemaValidateDoc(valid_ctxt, doc) == 0);
+	xmlSchemaFreeValidCtxt(valid_ctxt);
+	xmlSchemaFree(schema);
+	xmlSchemaFreeParserCtxt(parser_ctxt);
+	xmlFreeDoc(schema_doc);
+	/* force the return value to be non-negative on success */
+	return is_valid ? 1 : 0;
+}
+
 static void open_config_xml(xmlDocPtr *doc)
 {
 	*doc = xmlParseFile(CONFIG_XML);
 	if (*doc == NULL) {
 		fprintf(stderr, "Error: unable to parse file \"%s\"\n",
+				CONFIG_XML);
+		exit(1);
+	}
+	if (! is_valid(*doc, CONFIG_SCHEMA)) {
+		fprintf(stderr, "Error: one or more validation errors in the config file \"%s\"\n",
 				CONFIG_XML);
 		exit(1);
 	}
