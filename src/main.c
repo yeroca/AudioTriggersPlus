@@ -17,6 +17,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <assert.h>
+
+#include <libxml/tree.h>
+#include <libxml/parser.h>
+#include <libxml/xpath.h>
+#include <libxml/xpathInternals.h>
 
 #define DEBUG 1
 #if DEBUG
@@ -260,42 +266,37 @@ int find_free_channel(void)
 	return -1;
 }
 
-int main(int argc, char *argv[]) {
-	FMOD_SYSTEM *system;
-	FMOD_SOUND **fmod_sounds;
+static void init_xml_lib(void)
+{
+	/* Init libxml */
+	xmlInitParser();
+	LIBXML_TEST_VERSION
+}
+
+static void init_sound_system(FMOD_SYSTEM **system)
+{
 	FMOD_RESULT result;
 	unsigned int version;
-	int i, j, ret;
 
-	fmod_sounds = malloc(sizeof(FMOD_SOUND *) * get_num_sounds());
-
-	ret = pthread_cond_init(&events.events_available, NULL);
-	if (ret < 0) {
-		fprintf(stderr, "Unable to initialize the events cond object\n");
-	}
-	ret = pthread_mutex_init(&events.lock, NULL);
-	if (ret < 0) {
-		fprintf(stderr, "Unable to initialize the events lock object\n");
-	}
-
-
-	/*
-	 Create a System object and initialize.
-	 */
-	result = FMOD_System_Create(&system);
+	result = FMOD_System_Create(system);
 	ERRCHECK(result);
 
-	result = FMOD_System_GetVersion(system, &version);
+	result = FMOD_System_GetVersion(*system, &version);
 	ERRCHECK(result);
 
 	if (version < FMOD_VERSION) {
 		printf("Error!  You are using an old version of FMOD %08x.  This program requires %08x\n",
 			version, FMOD_VERSION);
-		return 0;
+		exit(1);
 	}
 
-	result = FMOD_System_Init(system, 32, FMOD_INIT_NORMAL, NULL);
+	result = FMOD_System_Init(*system, 32, FMOD_INIT_NORMAL, NULL);
 	ERRCHECK(result);
+}
+
+static void open_all_sounds(FMOD_SYSTEM *system, FMOD_SOUND **fmod_sounds) {
+	FMOD_RESULT result;
+	int i;
 
 	for (i = 0; i < get_num_sounds(); i++) {
 		float freq, vol, pan;
@@ -334,12 +335,17 @@ int main(int argc, char *argv[]) {
 						prio);
 		ERRCHECK(result);
 	}
+}
 
-	lfi = malloc(sizeof(struct log_file_info) * get_num_log_files());
+static void open_all_logfiles(void)
+{
+	int i, ret;
+
 	for (i = 0; i < get_num_log_files(); i++) {
 		lfi[i].file = fopen(log_file_names[i], "r");
 		if (lfi[i].file == NULL) {
 			fprintf(stderr, "fopen return NULL for \"%s\"\n", log_file_names[i]);
+			exit(1);
 		}
 		ret = pthread_create(&lfi[i].thread, NULL, logwatcher, (void *)(intptr_t)i);
 		if (ret < 0) {
@@ -347,6 +353,11 @@ int main(int argc, char *argv[]) {
 			exit(1);
 		}
 	}
+}
+
+static void match_triggers_with_sounds(void)
+{
+	int i, j;
 
 	for (i = 0; i < get_num_triggers(); i++) {
 		bool found = false;
@@ -358,8 +369,57 @@ int main(int argc, char *argv[]) {
 		}
 		if (!found) {
 			fprintf(stderr, "Unable to find sound: %s for trigger: %s\n", triggers[i].sound_to_play, triggers[i].name);
+			exit(1);
 		}
 	}
+}
+
+static void release_all_sounds(FMOD_SOUND **fmod_sounds)
+{
+	int i;
+	FMOD_RESULT result;
+
+	for (i = 0; i < get_num_sounds(); i++) {
+		result = FMOD_Sound_Release(fmod_sounds[i]);
+		ERRCHECK(result);
+	}
+}
+
+static void close_sound_system(FMOD_SYSTEM *system)
+{
+	FMOD_RESULT result;
+
+	result = FMOD_System_Close(system);
+	ERRCHECK(result);
+	result = FMOD_System_Release(system);
+	ERRCHECK(result);
+}
+
+int main(int argc, char *argv[]) {
+	FMOD_SYSTEM *system;
+	FMOD_SOUND **fmod_sounds;
+	FMOD_RESULT result;
+	int ret;
+
+	ret = pthread_cond_init(&events.events_available, NULL);
+	if (ret < 0) {
+		fprintf(stderr, "Unable to initialize the events cond object\n");
+	}
+	ret = pthread_mutex_init(&events.lock, NULL);
+	if (ret < 0) {
+		fprintf(stderr, "Unable to initialize the events lock object\n");
+	}
+
+	init_sound_system(&system);
+	init_xml_lib();
+
+	fmod_sounds = malloc(sizeof(FMOD_SOUND *) * get_num_sounds());
+	open_all_sounds(system, fmod_sounds);
+
+	lfi = malloc(sizeof(struct log_file_info) * get_num_log_files());
+	open_all_logfiles();
+
+	match_triggers_with_sounds();
 
 	/*
 	 Main loop.
@@ -393,17 +453,9 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	/*
-	 Shut down
-	 */
-	for (i = 0; i < get_num_sounds(); i++) {
-		result = FMOD_Sound_Release(fmod_sounds[i]);
-		ERRCHECK(result);
-	}
-	result = FMOD_System_Close(system);
-	ERRCHECK(result);
-	result = FMOD_System_Release(system);
-	ERRCHECK(result);
+	release_all_sounds(fmod_sounds);
+
+	close_sound_system(system);
 
 	return 0;
 }
