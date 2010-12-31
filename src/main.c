@@ -33,6 +33,7 @@
 
 struct logfile {
 	xmlChar *file;
+	xmlChar **attached_triggers;
 };
 struct logfile *logfiles;
 
@@ -77,7 +78,6 @@ void _ERRCHECK(FMOD_RESULT result, const char *file, const char *func, int linen
 
 const char *case_insensitive_strstr(const char *search_in, const char *search_for)
 {
-	debugmsg("search_in: %s\nsearch_for: %s\n", search_in, search_for);
 	if (*search_for == '\0') {
 		return search_in;
 	}
@@ -211,7 +211,7 @@ void *logwatcher(void *arg) {
 		buffer[strlen(buffer) - 1] = '\0';
 		debugmsg("got line: %s\n", buffer);
 		for (i = 0; i < num_triggers; i++) {
-			debugmsg("looking for %s in %s\n", triggers[i].pattern, buffer);
+			// debugmsg("looking for %s in %s\n", triggers[i].pattern, buffer);
 			if (case_insensitive_strstr(&buffer[LOG_MSG_START], (char *)triggers[i].pattern)) {
 				debugmsg("enqueuing sound %s\n", triggers[i].name);
 				enqueue_sound(triggers[i].sound_to_play_id);
@@ -242,6 +242,32 @@ int find_free_channel(void)
 }
 
 #define CONFIG_XML "AudioTriggers.xml"
+
+/* the text element is a pseudo element defined by libxml */
+#define TEXT_ELT			(xmlChar *)"text"
+
+#define AUDIOTRIGGERS_ELT		(xmlChar *)"audiotriggers"
+
+#define SOUND_ELT 			(xmlChar *)"sound"
+#define SOUND_NAME_ATTR 		(xmlChar *)"name"
+#define SOUND_FILE_ELT 			(xmlChar *)"file"
+#define SOUND_VOL_ELT 			(xmlChar *)"vol"
+#define SOUND_PAN_ELT 			(xmlChar *)"pan"
+#define SOUND_PRIO_ELT 			(xmlChar *)"priority"
+
+#define TRIGGER_ELT 			(xmlChar *)"trigger"
+#define TRIGGER_NAME_ATTR 		(xmlChar *)"name"
+#define TRIGGER_PATTERN_ELT		(xmlChar *)"pattern"
+#define TRIGGER_SOUNDTOPLAY_ELT		(xmlChar *)"sound_to_play"
+#define TRIGGER_STOPSEARCHONMATCH_ELT	(xmlChar *)"stop_search_on_match"
+#define TRIGGER_COMMENT_ELT		(xmlChar *)"comment"
+
+#define LOGFILE_ELT			(xmlChar *)"logfile"
+#define LOGFILE_FILE_ELT 		(xmlChar *)"file"
+#define LOGFILE_ATTACHTRIGGER_ELT	(xmlChar *)"attach_trigger"
+#define LOGFILE_ATTACHTRIGGER_NAME_ATTR	(xmlChar *)"name"
+
+
 
 static void open_config_xml(xmlDocPtr *doc)
 {
@@ -276,6 +302,8 @@ static xmlNodePtr get_element(xmlNodePtr node, const xmlChar *element)
 	}
 	return NULL;
 }
+
+/* Find an element among siblings, and get the (one) text element within it */
 static xmlNodePtr get_element_text(xmlNodePtr node, const xmlChar *element)
 {
 	xmlNodePtr sib;
@@ -283,7 +311,7 @@ static xmlNodePtr get_element_text(xmlNodePtr node, const xmlChar *element)
 	for (sib = node; sib; sib = sib->next) {
 		if (xmlStrEqual(sib->name, element)) {
 			xmlNodePtr text;
-			text = get_element(sib->children, (xmlChar *)"text");
+			text = get_element(sib->children, TEXT_ELT);
 			if (text == NULL) {
 				fprintf(stderr, "unable to find text element for %s\n", (char *)element);
 			} else {
@@ -293,26 +321,6 @@ static xmlNodePtr get_element_text(xmlNodePtr node, const xmlChar *element)
 	}
 	return NULL;
 }
-
-#define AUDIOTRIGGERS_ELT		(xmlChar *)"audiotriggers"
-
-#define SOUND_ELT 			(xmlChar *)"sound"
-#define SOUND_NAME_ATTR 		(xmlChar *)"name"
-#define SOUND_FILE_ELT 			(xmlChar *)"file"
-#define SOUND_VOL_ELT 			(xmlChar *)"vol"
-#define SOUND_PAN_ELT 			(xmlChar *)"pan"
-#define SOUND_PRIO_ELT 			(xmlChar *)"priority"
-
-#define TRIGGER_ELT 			(xmlChar *)"trigger"
-#define TRIGGER_NAME_ATTR 		(xmlChar *)"name"
-#define TRIGGER_PATTERN_ELT		(xmlChar *)"pattern"
-#define TRIGGER_SOUNDTOPLAY_ELT		(xmlChar *)"sound_to_play"
-#define TRIGGER_STOPSEARCHONMATCH_ELT	(xmlChar *)"stop_search_on_match"
-#define TRIGGER_COMMENT_ELT		(xmlChar *)"comment"
-
-#define LOGFILE_ELT			(xmlChar *)"logfile"
-#define LOGFILE_FILE_ELT 		(xmlChar *)"file"
-#define LOGFILE_ATTACHTRIGGER_ELT	(xmlChar *)"attach_trigger"
 
 void process_sound_element(xmlNodePtr node)
 {
@@ -425,10 +433,31 @@ static void load_triggers_from_config(xmlNodePtr node)
 	foreach_sibling(node, TRIGGER_ELT, process_trigger_element);
 }
 
+static int attach_trigger_cntr;
+static int logfile_cntr;
+
+void count_attach_trigger_elements(xmlNodePtr node)
+{
+	attach_trigger_cntr++;
+}
+
+void process_attach_trigger_element(xmlNodePtr node)
+{
+	xmlChar *name = xmlGetProp(node, LOGFILE_ATTACHTRIGGER_NAME_ATTR);
+
+	if (name == NULL) {
+		fprintf(stderr, "Unable to find name attribute on sound element %d\n", logfile_cntr + 1);
+		exit(1);
+	}
+	logfiles[logfile_cntr].attached_triggers[attach_trigger_cntr] = name;
+
+	attach_trigger_cntr++;
+}
+
 void process_logfile_element(xmlNodePtr node)
 {
 	xmlNodePtr children = node->children, file;
-	static int logfile_cntr = 0;
+
 
 	debugmsg("processing logfile element: %s\n", node->name);
 	file = get_element_text(children, LOGFILE_FILE_ELT);
@@ -439,6 +468,14 @@ void process_logfile_element(xmlNodePtr node)
 	logfiles[logfile_cntr].file = xmlStrdup(file->content);
 	debugmsg("logfile found: %s\n", file->content);
 
+	/* malloc space for the attached trigger pointers */
+	attach_trigger_cntr = 0;
+	foreach_sibling(children, LOGFILE_ATTACHTRIGGER_ELT, count_attach_trigger_elements);
+	logfiles[logfile_cntr].attached_triggers = malloc(sizeof(xmlChar *) * attach_trigger_cntr);
+
+	attach_trigger_cntr = 0;
+	foreach_sibling(children, LOGFILE_ATTACHTRIGGER_ELT, process_attach_trigger_element);
+
 	logfile_cntr++;
 }
 
@@ -447,7 +484,7 @@ static void load_logfiles_from_config(xmlNodePtr node)
 	foreach_sibling(node, LOGFILE_ELT, count_logfile_elements);
 	logfiles = malloc(sizeof(struct logfile) * num_logfiles);
 
-	foreach_sibling(node, (xmlChar *)"logfile", process_logfile_element);
+	foreach_sibling(node, LOGFILE_ELT, process_logfile_element);
 }
 
 static void close_config_xml(xmlDocPtr doc)
