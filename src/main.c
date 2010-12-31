@@ -24,8 +24,6 @@
 #include <libxml/xpath.h>
 #include <libxml/xpathInternals.h>
 
-#include "bitmaps.h"
-
 #define DEBUG 1
 #if DEBUG
 #define debugmsg(args...) fprintf(stderr, args)
@@ -33,9 +31,14 @@
 #define debugmsg(args...)
 #endif
 
+struct attached_trigger {
+	xmlChar *name;
+	int trigger_id;
+};
+
 struct logfile {
 	xmlChar *file;
-	xmlChar **attached_triggers;
+	struct attached_trigger *attached_triggers;
 	int num_attached_triggers;
 };
 struct logfile *logfiles;
@@ -211,9 +214,10 @@ void *logwatcher(void *arg) {
 		/* chomp off the newline */
 		buffer[strlen(buffer) - 1] = '\0';
 		debugmsg("got line: %s\n", buffer);
-		for (i = 0; i < num_triggers; i++) {
+		for (i = 0; i < logfiles[log_file_num].num_attached_triggers; i++) {
 			// debugmsg("looking for %s in %s\n", triggers[i].pattern, buffer);
-			if (case_insensitive_strstr(&buffer[LOG_MSG_START], (char *)triggers[i].pattern)) {
+			int trigger_id = logfiles[log_file_num].attached_triggers[i].trigger_id;
+			if (case_insensitive_strstr(&buffer[LOG_MSG_START], (char *)triggers[trigger_id].pattern)) {
 				debugmsg("enqueuing sound %s\n", triggers[i].name);
 				enqueue_sound(triggers[i].sound_to_play_id);
 				if (triggers[i].stop_search_on_match)
@@ -449,7 +453,7 @@ void process_attach_trigger_element(xmlNodePtr node)
 		exit(1);
 	}
 
-	logfiles[logfile_cntr].attached_triggers[attach_trigger_cntr] = name;
+	logfiles[logfile_cntr].attached_triggers[attach_trigger_cntr].name = name;
 	attach_trigger_cntr++;
 }
 
@@ -469,7 +473,7 @@ void process_logfile_element(xmlNodePtr node)
 	/* malloc space for the attached trigger pointers */
 	attach_trigger_cntr = 0;
 	foreach_sibling(children, LOGFILE_ATTACHTRIGGER_ELT, count_attach_trigger_elements);
-	logfiles[logfile_cntr].attached_triggers = malloc(sizeof(xmlChar *) * attach_trigger_cntr);
+	logfiles[logfile_cntr].attached_triggers = malloc(sizeof(struct attached_trigger) * attach_trigger_cntr);
 	logfiles[logfile_cntr].num_attached_triggers = attach_trigger_cntr;
 
 	attach_trigger_cntr = 0;
@@ -603,13 +607,13 @@ static void match_logfiles_with_triggers(void)
 		for (j = 0; j < logfiles[i].num_attached_triggers; j++) {
 			bool found = false;
 			for (k = 0; k < num_triggers; k++) {
-				if (xmlStrEqual(logfiles[i].attached_triggers[j], triggers[k].name)) {
+				if (xmlStrEqual(logfiles[i].attached_triggers[j].name, triggers[k].name)) {
 					found = true;
-					// FIXME figure out what to do here
+					logfiles[i].attached_triggers[j].trigger_id = k;
 				}
 			}
 			if (!found) {
-				fprintf(stderr, "Unable to find trigger: %s for logfile: %s\n", logfiles[i].attached_triggers[j], logfiles[i].file);
+				fprintf(stderr, "Unable to find trigger: %s for logfile: %s\n", logfiles[i].attached_triggers[j].name, logfiles[i].file);
 				exit(1);
 			}
 		}
