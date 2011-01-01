@@ -13,7 +13,7 @@ foreach $trigger (@triggers) {
 	chomp $trigger;
 
 	$sound_file = $trigger;
-	$sound_file =~ s/.*SoundLink=([_\.,0-9a-zA-Z ]*);.*$/\1/;
+	$sound_file =~ s/.*SoundLink=([-_\.,0-9a-zA-Z ]*);.*$/\1/;
 	$sound_name = $sound_file;
 	$sound_name =~ s/(.*).wav$/\1/;
         $sound_hash{$sound_name} = 1;
@@ -37,9 +37,9 @@ foreach $trigger (@triggers) {
 
 
 	$pattern = $trigger;
-	$pattern =~ s/Trigger=(["\'\\\(\)\.,0-9a-zA-Z ]*);.*$/\1/;
+	$pattern =~ s/Trigger=([-!"\'\\\(\)\.,0-9a-zA-Z ]*);.*$/\1/;
 	$sound_file = $trigger;
-	$sound_file =~ s/.*SoundLink=([_\.,0-9a-zA-Z ]*);.*$/\1/;
+	$sound_file =~ s/.*SoundLink=([-_\.,0-9a-zA-Z ]*);.*$/\1/;
 	$sound_name = $sound_file;
 	$sound_name =~ s/(.*).wav$/\1/;
 
