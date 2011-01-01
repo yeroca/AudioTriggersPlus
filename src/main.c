@@ -448,7 +448,7 @@ void process_trigger_element(xmlNodePtr node)
 	/* Note that there is a comment element too, but it is ignored by this code */
 
 	triggers[trigger_cntr].name = xmlGetProp(node, TRIGGER_NAME_ATTR);
-	if (sounds[trigger_cntr].name == NULL) {
+	if (triggers[trigger_cntr].name == NULL) {
 		fprintf(stderr, "Unable to find name attribute on trigger element %d\n", trigger_cntr + 1);
 		exit(1);
 	}
@@ -500,7 +500,7 @@ void process_attach_trigger_element(xmlNodePtr node)
 	xmlChar *name = xmlGetProp(node, LOGFILE_ATTACHTRIGGER_NAME_ATTR);
 
 	if (name == NULL) {
-		fprintf(stderr, "Unable to find name attribute on sound element %d\n", logfile_cntr + 1);
+		fprintf(stderr, "Unable to find name attribute on attach_trigger element %d\n", logfile_cntr + 1);
 		exit(1);
 	}
 
