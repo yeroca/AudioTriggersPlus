@@ -585,7 +585,10 @@ static void open_all_sounds(FMOD_SYSTEM *system, FMOD_SOUND **fmod_sounds) {
 		debugmsg("opening sound file %s\n", sounds[i].file);
 		result = FMOD_System_CreateSound(system, (char *)sounds[i].file,
 				FMOD_SOFTWARE, 0, &fmod_sounds[i]);
-		ERRCHECK(result);
+		if (result != FMOD_OK) {
+			fprintf(stderr, "Unable to open sound file \"%s\"\n", sounds[i].file);
+			exit(1);
+		}
 		result = FMOD_Sound_SetMode(fmod_sounds[i], FMOD_LOOP_OFF);
 		ERRCHECK(result);
 
@@ -620,7 +623,7 @@ static void open_all_logfiles(void)
 	for (i = 0; i < num_logfiles; i++) {
 		lfi[i].file = fopen((char *)logfiles[i].file, "r");
 		if (lfi[i].file == NULL) {
-			fprintf(stderr, "fopen return NULL for \"%s\"\n", logfiles[i].file);
+			fprintf(stderr, "Unable to open logfile \"%s\": %s\n", logfiles[i].file, strerror(errno));
 			exit(1);
 		}
 		ret = pthread_create(&lfi[i].thread, NULL, logwatcher, (void *)(intptr_t)i);
