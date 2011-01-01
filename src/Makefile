@@ -1,16 +1,22 @@
-all: AudioTrigger test_fmod parse_xml xpath1
+OS := $(shell uname -s | sed -e 's/[^A-Za-z].*//')
+
+all: AudioTrigger 
+
+
+ifeq ($(OS),CYGWIN)
+FMODLIB=../lib/libfmodex.a
+else
+FMODLIB=-L ../lib -lfmodex64
+endif
 
 AudioTrigger: main.c
-	gcc -Werror -Wall -O0 -g3 -o AudioTrigger -I /usr/include/libxml2 main.c -L ../lib -lfmodex64 -lpthread -lxml2
+	gcc -Werror -Wall -O0 -g3 -o AudioTrigger -I /usr/include/libxml2 main.c $(FMODLIB) -lpthread -lxml2
 
-test_fmod: test_fmod.c
-	gcc -Werror -Wall -O0 -g3 -o test_fmod test_fmod.c -L ../lib -lfmodex64 -lpthread
-
-parse_xml: parse_xml.c
-	gcc -Werror -Wall -O0 -g3 -o parse_xml -I /usr/include/libxml2 parse_xml.c -lxml2
-
-xpath1: xpath1.c
-	gcc -Werror -Wall -O0 -g3 -o xpath1 -I /usr/include/libxml2 -lxml2 xpath1.c
+install:
+ifeq ($(OS),CYGWIN)
+	cp ../lib/fmodex.dll /usr/local/bin
+else
+endif
 
 clean:
-	rm -f *.o AudioTrigger test_fmod
+	rm -f *.o AudioTrigger
