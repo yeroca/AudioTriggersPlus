@@ -6,7 +6,7 @@ all: AudioTrigger
 ifeq ($(OS),CYGWIN)
 FMODLIB=../lib/libfmodex.a
 else
-FMODLIB=-L ../lib -lfmodex64
+FMODLIB=-Xlinker -rpath -Xlinker ../lib -L ../lib -lfmodex64
 endif
 
 AudioTrigger: main.c
