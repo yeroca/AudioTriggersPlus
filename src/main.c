@@ -693,6 +693,15 @@ static void close_sound_system(FMOD_SYSTEM *system)
 	ERRCHECK(result);
 }
 
+static void print_thankyou(void) {
+	printf("---------------------------------------------------\n");
+	printf("--              AudioTriggers+ 0.1               --\n");
+	printf("--                                               --\n");
+	printf("--   Implementation uses the FMOD Sound System   --\n");
+	printf("--   from Firelight Technologies @ FMOD.org      --\n");
+	printf("---------------------------------------------------\n");
+}
+
 int main(int argc, char *argv[]) {
 	FMOD_SYSTEM *system;
 	FMOD_SOUND **fmod_sounds;
@@ -734,6 +743,8 @@ int main(int argc, char *argv[]) {
 	match_triggers_with_sounds();
 
 	match_logfiles_with_triggers();
+
+	print_thankyou();
 	/*
 	 Main loop.
 	 */
