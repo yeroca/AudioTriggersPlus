@@ -1,8 +1,9 @@
 
-all: non-existent
-
-non-existent:
+all:
 	make --directory src all
 
 clean:
-	make --director src clean
+	make --directory src clean
+
+install:
+	make --directory src install
