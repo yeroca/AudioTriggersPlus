@@ -215,14 +215,16 @@ void *logwatcher(void *arg) {
 		/* chomp off the newline */
 		buffer[strlen(buffer) - 1] = '\0';
 		debugmsg("got line: %s\n", buffer);
-		for (i = 0; i < logfiles[log_file_num].num_attached_triggers; i++) {
-			// debugmsg("looking for %s in %s\n", triggers[i].pattern, buffer);
-			int trigger_id = logfiles[log_file_num].attached_triggers[i].trigger_id;
-			if (case_insensitive_strstr(&buffer[LOG_MSG_START], (char *)triggers[trigger_id].pattern)) {
-				debugmsg("enqueuing sound %s\n", triggers[i].name);
-				enqueue_sound(triggers[i].sound_to_play_id);
-				if (triggers[i].stop_search_on_match)
-					break;
+		if (strlen(buffer) > LOG_MSG_START) {
+			for (i = 0; i < logfiles[log_file_num].num_attached_triggers; i++) {
+				int trigger_id = logfiles[log_file_num].attached_triggers[i].trigger_id;
+				debugmsg("looking for %s in %s\n", triggers[trigger_id].pattern, buffer);
+				if (case_insensitive_strstr(&buffer[LOG_MSG_START], (char *)triggers[trigger_id].pattern)) {
+					debugmsg("enqueuing sound %s\n", triggers[trigger_id].name);
+					enqueue_sound(triggers[trigger_id].sound_to_play_id);
+					if (triggers[trigger_id].stop_search_on_match)
+						break;
+				}
 			}
 		}
 	}
