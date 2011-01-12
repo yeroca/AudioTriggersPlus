@@ -35,6 +35,7 @@
 struct attached_trigger {
 	xmlChar *name;
 	int trigger_id;
+	bool stop_search_on_match;
 };
 
 struct logfile {
@@ -125,7 +126,6 @@ static void enqueue_sound(int sound_id)
 struct trigger {
 	xmlChar *name;
 	xmlChar *pattern;
-	bool stop_search_on_match;
 	xmlChar *sound_to_play;
 	int sound_to_play_id;
 
@@ -222,7 +222,7 @@ void *logwatcher(void *arg) {
 				if (case_insensitive_strstr(&buffer[LOG_MSG_START], (char *)triggers[trigger_id].pattern)) {
 					debugmsg("enqueuing sound %s\n", triggers[trigger_id].name);
 					enqueue_sound(triggers[trigger_id].sound_to_play_id);
-					if (triggers[trigger_id].stop_search_on_match)
+					if (logfiles[log_file_num].attached_triggers[i].stop_search_on_match)
 						break;
 				}
 			}
@@ -268,12 +268,12 @@ int find_free_channel(void)
 #define TRIGGER_NAME_ATTR 		(xmlChar *)"name"
 #define TRIGGER_PATTERN_ELT		(xmlChar *)"pattern"
 #define TRIGGER_SOUNDTOPLAY_ELT		(xmlChar *)"sound_to_play"
-#define TRIGGER_STOPSEARCHONMATCH_ELT	(xmlChar *)"stop_search_on_match"
 #define TRIGGER_COMMENT_ELT		(xmlChar *)"comment"
 
 #define LOGFILE_ELT			(xmlChar *)"logfile"
 #define LOGFILE_FILE_ELT 		(xmlChar *)"file"
 #define LOGFILE_ATTACHTRIGGER_ELT	(xmlChar *)"attach_trigger"
+#define LOGFILE_ATTACHTRIGGER_STOPSEARCHONMATCH_ELT	(xmlChar *)"stop_search_on_match"
 #define LOGFILE_ATTACHTRIGGER_NAME_ATTR	(xmlChar *)"name"
 
 /* This code is from http://wiki.njh.eu/XML-Schema_validation_with_libxml2 */
@@ -443,7 +443,7 @@ static void load_sounds_from_config(xmlNodePtr node)
 void process_trigger_element(xmlNodePtr node)
 {
 	static int trigger_cntr = 0;
-	xmlNodePtr children = node->children, pattern, sound_to_play, stop_search_on_match;
+	xmlNodePtr children = node->children, pattern, sound_to_play;
 
 	debugmsg("processing trigger element: %s\n", node->name);
 
@@ -469,14 +469,6 @@ void process_trigger_element(xmlNodePtr node)
 	}
 	triggers[trigger_cntr].sound_to_play = xmlStrdup(sound_to_play->content);
 
-	stop_search_on_match = get_element(children, TRIGGER_STOPSEARCHONMATCH_ELT);
-	if (stop_search_on_match == NULL) {
-		triggers[trigger_cntr].stop_search_on_match = false;
-		debugmsg("setting stop search on match to false\n");
-	} else {
-		triggers[trigger_cntr].stop_search_on_match = true;
-		debugmsg("setting stop search on match to true\n");
-	}
 
 	trigger_cntr++;
 }
@@ -500,6 +492,7 @@ void count_attach_trigger_elements(xmlNodePtr node)
 void process_attach_trigger_element(xmlNodePtr node)
 {
 	xmlChar *name = xmlGetProp(node, LOGFILE_ATTACHTRIGGER_NAME_ATTR);
+	xmlNodePtr children = node->children, stop_search_on_match;
 
 	if (name == NULL) {
 		fprintf(stderr, "Unable to find name attribute on attach_trigger element %d\n", logfile_cntr + 1);
@@ -508,6 +501,15 @@ void process_attach_trigger_element(xmlNodePtr node)
 
 	logfiles[logfile_cntr].attached_triggers[attach_trigger_cntr].name = name;
 	attach_trigger_cntr++;
+
+	stop_search_on_match = get_element(children, LOGFILE_ATTACHTRIGGER_STOPSEARCHONMATCH_ELT);
+	if (stop_search_on_match == NULL) {
+		logfiles[logfile_cntr].attached_triggers[attach_trigger_cntr].stop_search_on_match = false;
+		debugmsg("setting stop search on match to false\n");
+	} else {
+		logfiles[logfile_cntr].attached_triggers[attach_trigger_cntr].stop_search_on_match = true;
+		debugmsg("setting stop search on match to true\n");
+	}
 }
 
 void process_logfile_element(xmlNodePtr node)

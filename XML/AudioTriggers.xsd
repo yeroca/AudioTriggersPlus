@@ -20,7 +20,6 @@
 						<xs:all>
 							<xs:element name="pattern" minOccurs="1" type="xs:string" />
 							<xs:element name="sound_to_play" minOccurs="1" type="xs:string" />
-							<xs:element name="stop_search_on_match" minOccurs="0" maxOccurs="1"/>
 							<xs:element name="comment" minOccurs="0" type="xs:string" />
 						</xs:all>
 						<xs:attribute name="name" type="xs:string" use="required" />
@@ -33,6 +32,9 @@
 								type="xs:string" />
 							<xs:element name="attach_trigger" minOccurs="0" maxOccurs="unbounded">
 								<xs:complexType>
+									<xs:all>
+										<xs:element name="stop_search_on_match" minOccurs="0" maxOccurs="1"/>
+									</xs:all>
 									<xs:attribute name="name" type="xs:string" use="required" />
 								</xs:complexType>
 							</xs:element>
