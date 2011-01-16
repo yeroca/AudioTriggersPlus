@@ -500,7 +500,6 @@ void process_attach_trigger_element(xmlNodePtr node)
 	}
 
 	logfiles[logfile_cntr].attached_triggers[attach_trigger_cntr].name = name;
-	attach_trigger_cntr++;
 
 	stop_search_on_match = get_element(children, LOGFILE_ATTACHTRIGGER_STOPSEARCHONMATCH_ELT);
 	if (stop_search_on_match == NULL) {
@@ -510,6 +509,7 @@ void process_attach_trigger_element(xmlNodePtr node)
 		logfiles[logfile_cntr].attached_triggers[attach_trigger_cntr].stop_search_on_match = true;
 		debugmsg("setting stop search on match to true\n");
 	}
+	attach_trigger_cntr++;
 }
 
 void process_logfile_element(xmlNodePtr node)
