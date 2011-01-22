@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<audiotriggers>
+	<sound name = "foo">
+		<file>C:\sounds\foo.wav</file>
+		<vol>0.0</vol>
+		<pan>1.0</pan>
+		<priority>100</priority>
+	</sound>
+	<sound name="bar">
+		<file>C:\sounds\bar.wav</file>
+	</sound>
+	<trigger name = "meh">
+		<pattern>abc123</pattern>
+		<sound_to_play>foo</sound_to_play>
+		<comment>This is a comment</comment>
+	</trigger>
+	<logfile>
+		<file>/cygdrive/c/Program Files/EverQuest/Logs/eqlog_erollisi_Turtylduv.txt</file>
+		<attach_trigger name="meh">
+			<stop_search_on_match/>
+		</attach_trigger>
+		<attach_trigger name="doesntexist"/>
+	</logfile>
+	<logfile>
+		<file>stuff.txt</file>
+	</logfile>
+</audiotriggers>
