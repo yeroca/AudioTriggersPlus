@@ -704,8 +704,8 @@ static void print_thankyou(void) {
 	printf("---------------------------------------------------\n");
 	printf("--              AudioTriggers+ 0.1               --\n");
 	printf("--                                               --\n");
-	printf("--   Implementation uses the FMOD Sound System   --\n");
-	printf("--   from Firelight Technologies @ FMOD.org      --\n");
+	printf("--  Implementation uses the FMODex Sound System  --\n");
+	printf("--    from Firelight Technologies @ FMOD.org     --\n");
 	printf("---------------------------------------------------\n");
 }
 
