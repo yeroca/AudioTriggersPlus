@@ -1,0 +1,107 @@
+== AudioTriggers+
+
+=== AudioTriggers+ compared to EQ AT's and GamTextTriggers
+
+
+* AudioTriggers+ is currently harder to use than the in-game system.  The
+plan is to add a nice graphical user interface at some point, but I don't
+know when that will be.  So at the moment, if you want to use this program,
+you will need to edit the atconfig.xml file with some sort of text editor, like
+wordpad.
+
+* AudioTriggers+ adds precise control over the search order of the patterns.
+You can choose either to continue searching for more sounds to play, or you
+can play a sound and then stop the search there.
+
+* AudioTriggers+ allows you to monitor more than one log file, so if you are
+multi-boxing, you can have a single instance of AudioTriggers+ running for
+multiple boxes.  You can choose which triggers to attach to which log file,
+and you can determine the search order on a per-log file basis.
+
+* AudioTriggers+ has better sound control.  More sounds can be played
+simultaneously, and you shouldn't ever hear a sound get cut off like in EQ
+or like GamTextTriggers.  Also, you can tune the sounds individually, by
+changing the Left/Right balance, and the volume.  AudioTriggers+ allows the
+sounds to be taken anywhere from the system, so you don't need to pile them
+all into a single directory (unless you want to).
+
+* AudioTriggers+ runs as a separate program (like GamTextTriggers, but unlike
+EQ's AT system), so if you have a multi-core chip, it will create less overhead
+for the processor.
+
+=== How to build
+
+Note that this requires some knowledge and comfort-level with Linux and/or Cygwin.
+
+At some point I'd like to be able to provide a binary which you can
+download, instead of having to build this on your own, but that day is not
+today.
+
+==== Dependencies
+
+# Install the latest Cygwin from cygwin.com, and add the following packages:
+* Devel/git
+* Devel/gcc-core
+* Devel/libxml2
+* Devel/libxsl
+# Open a cygwin shell and do
+## {{{git clone git://github.com/yeroca/AudioTriggersPlus.git}}}
+## {{{cd AudioTriggersPlus/src}}}
+## {{{make}}}
+
+=== How to use
+
+In the file XML/example_atconfig.xml, you'll find a crude example of the format needed for the file src/atconfig.xml.
+
+There are three main elements in atconfig.xml: <sound>, <trigger>, and <logfile>
+
+==== <sound>
+
+These describe the sound file and any adjustments you want to make to the
+volume, balance (aka "pan"), and priority.  The priority determines which
+sounds are more important than others, and when the system is highly
+burdened with lots of sounds, the ones with higher priorities are more
+likely to play than the ones with lesser priorities.  Priority is probably
+something you can leave off, because EQ doesn't put much burden on the
+underlying sound system.  To start with, I'd suggest just specifying the file
+alone.  Note that right now the sound file has to be specified in Windows
+pathname format instead of Cygwin's /cygdrive/c/... method.
+
+The name attribute you give the sound is arbitrary, and you will use it
+below when describing a trigger.
+
+==== <trigger>
+
+These provide the pattern to search for in a log file, and provide the
+name of the <sound> to play when the trigger is found.
+
+==== <logfile>
+
+You need one of these for each log file you will monitor.  If you are
+one-boxing, that means you only need a single <logfile> element.  The
+logfile element contains a <file> element which gives the //Cygwin-style//
+pathname to the log file, e.g.: 
+/cygdrive/c/Program Files/Everquest/Logs/eqlog_*_*.txt
+
+Each <logfile> element also contains
+<attach_trigger> elements which describe which of the <trigger>'s (see
+above) should be looked for in this log file.  The order of the
+<attach_trigger> elements determines the search order.  Each
+<attach_trigger> element can contain an optional <stop_search_on_match/>
+element.  If this element is present, the search will stop if the trigger's
+pattern matches the log file line, but only after that trigger's sound is
+played.
+
+==== How to use the atconfig.xml file
+
+Once you have created your own atconfig.xml file, move it into the src
+subdirectory.
+
+Start up AudioTriggers+ by issuing these commands from a Cygwin shell:
+
+# {{{cd AudioTriggersPlus}}}
+# {{{./AudioTriggers+}}}
+
+If you've made any errors in the atconfig.xml file, the program should give
+you some decent error messages about what's wrong.
+
