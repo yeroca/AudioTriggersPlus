@@ -41,9 +41,12 @@ today.
 
 # Install the latest Cygwin from cygwin.com, and add the following packages:
 * Devel/git
+* Devel/gitk [optional]
+* Devel/git-gui [optional]
 * Devel/gcc-core
-* Devel/libxml2
-* Devel/libxsl
+* Devel/libxml2-devel
+* Devel/make
+* All/Libs/libxslt-devel
 # Open a cygwin shell and do
 ## {{{git clone git://github.com/yeroca/AudioTriggersPlus.git}}}
 ## {{{cd AudioTriggersPlus/src}}}
