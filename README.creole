@@ -99,7 +99,7 @@ subdirectory.
 
 Start up AudioTriggers+ by issuing these commands from a Cygwin shell:
 
-# {{{cd AudioTriggersPlus}}}
+# {{{cd AudioTriggersPlus/src}}}
 # {{{./AudioTriggers+}}}
 
 If you've made any errors in the atconfig.xml file, the program should give
