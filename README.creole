@@ -48,6 +48,7 @@ today.
 ## {{{git clone git://github.com/yeroca/AudioTriggersPlus.git}}}
 ## {{{cd AudioTriggersPlus/src}}}
 ## {{{make}}}
+## {{{make install}}}
 
 === How to use
 
