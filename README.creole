@@ -47,6 +47,9 @@ today.
 ## Devel/libxml2-devel
 ## Devel/make
 ## All/Libs/libxslt-devel
+
+==== Do the build
+
 # Open a cygwin shell and do
 ## {{{git clone git://github.com/yeroca/AudioTriggersPlus.git}}}
 ## {{{cd AudioTriggersPlus/src}}}
@@ -101,10 +104,10 @@ played.
 Once you have created your own atconfig.xml file, move it into the src
 subdirectory.
 
-Start up AudioTriggers+ by issuing these commands from a Cygwin shell:
+Start up AudioTriggersPlus by issuing these commands from a Cygwin shell:
 
 # {{{cd AudioTriggersPlus/src}}}
-# {{{./AudioTriggers+}}}
+# {{{./AudioTriggersPlus}}}
 
 If you've made any errors in the atconfig.xml file, the program should give
 you some decent error messages about what's wrong.
