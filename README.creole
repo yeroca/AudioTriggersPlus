@@ -46,7 +46,6 @@ today.
 ## Devel/gcc-core
 ## Devel/libxml2-devel
 ## Devel/make
-## Libs/libxslt-devel
 
 ==== Do the build
 
