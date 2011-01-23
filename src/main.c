@@ -25,7 +25,7 @@
 #include <libxml/xpathInternals.h>
 #include <libxml/xmlschemas.h>
 
-#define DEBUG 1
+#define DEBUG 0
 #if DEBUG
 #define debugmsg(args...) fprintf(stderr, args)
 #else
