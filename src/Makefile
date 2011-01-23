@@ -1,6 +1,6 @@
 OS := $(shell uname -s | sed -e 's/[^A-Za-z].*//')
 
-all: AudioTrigger 
+all: AudioTriggersPlus
 
 
 ifeq ($(OS),CYGWIN)
