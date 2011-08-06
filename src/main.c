@@ -68,6 +68,7 @@ struct log_file_info {
 struct log_file_info *lfi;
 
 #define NUM_CHANNELS 32
+#define NO_SOUND -1
 
 FMOD_CHANNEL *channel[NUM_CHANNELS];
 
@@ -111,6 +112,9 @@ const char *case_insensitive_strstr(const char *search_in, const char *search_fo
 
 static void enqueue_sound(int sound_id)
 {
+	if (sound_id == NO_SOUND)
+		return;
+
 	pthread_mutex_lock(&events.lock);
 	events.next = (events.next + 1) % NUM_EVENTS;
 	debugmsg("cur = %d, next = %d\n", events.cur, events.next);
@@ -464,10 +468,10 @@ void process_trigger_element(xmlNodePtr node)
 
 	sound_to_play = get_element_text(children, TRIGGER_SOUNDTOPLAY_ELT);
 	if (sound_to_play == NULL) {
-		fprintf(stderr, "Unable to find sound_to_play element in trigger element %d\n", trigger_cntr + 1);
-		exit(1);
+		triggers[trigger_cntr].sound_to_play = NULL;
+	} else {
+		triggers[trigger_cntr].sound_to_play = xmlStrdup(sound_to_play->content);
 	}
-	triggers[trigger_cntr].sound_to_play = xmlStrdup(sound_to_play->content);
 
 
 	trigger_cntr++;
@@ -644,6 +648,10 @@ static void match_triggers_with_sounds(void)
 
 	for (i = 0; i < num_triggers; i++) {
 		bool found = false;
+		if (triggers[i].sound_to_play == NULL) {
+			triggers[i].sound_to_play_id = NO_SOUND;
+			continue;
+		}
 		for (j = 0; j < num_sounds; j++) {
 			if (xmlStrEqual(triggers[i].sound_to_play, sounds[j].name)) {
 				found = true;
