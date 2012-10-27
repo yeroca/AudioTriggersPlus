@@ -133,7 +133,7 @@ static inline struct timespec timespec_diff(const struct timespec * a, const str
 }
 
 static inline long int timespec2ms(const struct timespec * a) {
-	__time_t sec = a->tv_sec;
+	long sec = a->tv_sec;
 
 	/* No more than 100 seconds */
 	if (sec > 100)
@@ -149,7 +149,7 @@ struct sound {
 	xmlChar *file;
 	int prio;
 	float vol, pan;
-	__time_t min_interval;
+	long min_interval;
 	struct timespec timestamp;
 
 };
@@ -159,7 +159,7 @@ struct sound *sounds;
 static void enqueue_sound(int sound_id)
 {
 	struct timespec now, elapsed;
-	__time_t elapsed_ms;
+	long elapsed_ms;
 
 	if (sound_id == NO_SOUND)
 		return;
