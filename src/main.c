@@ -132,8 +132,13 @@ static inline struct timespec timespec_diff(const struct timespec * a, const str
     }
 }
 
-static inline int timespec2ms(const struct timespec * a) {
-	return (a->tv_sec * 1000) + (a->tv_nsec / 1000000);
+static inline long int timespec2ms(const struct timespec * a) {
+	__time_t sec = a->tv_sec;
+
+	/* No more than 100 seconds */
+	if (sec > 100)
+			sec = 100;
+	return (sec * 1000) + (a->tv_nsec / 1000000);
 }
 
 /* sentinel to indicate taking the system default sound attributes */
@@ -144,7 +149,7 @@ struct sound {
 	xmlChar *file;
 	int prio;
 	float vol, pan;
-	int min_interval;
+	__time_t min_interval;
 	struct timespec timestamp;
 
 };
@@ -154,12 +159,12 @@ struct sound *sounds;
 static void enqueue_sound(int sound_id)
 {
 	struct timespec now, elapsed;
-	int elapsed_ms;
+	__time_t elapsed_ms;
 
 	if (sound_id == NO_SOUND)
 		return;
 
-	clock_gettime(CLOCK_MONOTONIC, &now);
+	clock_gettime(CLOCK_REALTIME, &now);
 	elapsed = timespec_diff(&now, &(sounds[sound_id].timestamp));
 	elapsed_ms = timespec2ms(&elapsed);
 
@@ -463,8 +468,8 @@ void process_sound_element(xmlNodePtr node)
 	}
 
 	min_interval = get_element_text(children, SOUND_MIN_INTERVAL_ELT);
-	if (prio != NULL) {
-		sscanf((char *)min_interval->content, "%d", &sounds[sound_cntr].min_interval);
+	if (min_interval != NULL) {
+		sscanf((char *)min_interval->content, "%ld", &sounds[sound_cntr].min_interval);
 	} else {
 		sounds[sound_cntr].min_interval = 0;
 	}
@@ -761,7 +766,7 @@ static void close_sound_system(FMOD_SYSTEM *system)
 
 static void print_thankyou(void) {
 	printf("---------------------------------------------------\n");
-	printf("--              AudioTriggers+ 0.1               --\n");
+	printf("--              AudioTriggers+ 1.0               --\n");
 	printf("--                                               --\n");
 	printf("--  Implementation uses the FMODex Sound System  --\n");
 	printf("--    from Firelight Technologies @ FMOD.org     --\n");
