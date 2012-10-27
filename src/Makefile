@@ -10,7 +10,7 @@ FMODLIB=-Xlinker -rpath -Xlinker ../lib -L ../lib -lfmodex64
 endif
 
 AudioTriggersPlus: main.c
-	gcc -Werror -Wall -O0 -g3 -o AudioTriggersPlus -I /usr/include/libxml2 main.c $(FMODLIB) -lpthread -lxml2
+	gcc -Werror -Wall -O0 -g3 -o AudioTriggersPlus -I /usr/include/libxml2 main.c $(FMODLIB) -lrt -lpthread -lxml2
 
 install:
 ifeq ($(OS),CYGWIN)

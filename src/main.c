@@ -5,6 +5,7 @@
  */
 #include "../inc/fmod.h"
 #include "../inc/fmod_errors.h"
+#include <time.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -18,6 +19,7 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <assert.h>
+
 
 #include <libxml/tree.h>
 #include <libxml/parser.h>
@@ -110,21 +112,71 @@ const char *case_insensitive_strstr(const char *search_in, const char *search_fo
 	return NULL;
 }
 
+#define NS_IN_SEC 1000000000
+static inline struct timespec timespec_diff(const struct timespec * a, const struct timespec *  b)
+{
+    if(a->tv_nsec < b->tv_nsec)
+    {
+        struct timespec result = {
+            a->tv_sec - b->tv_sec - 1,
+            NS_IN_SEC + a->tv_nsec - b->tv_nsec,
+        };
+        return result;
+    } else
+    {
+        struct timespec result = {
+            a->tv_sec - b->tv_sec,
+            a->tv_nsec - b->tv_nsec,
+        };
+        return result;
+    }
+}
+
+static inline int timespec2ms(const struct timespec * a) {
+	return (a->tv_sec * 1000) + (a->tv_nsec / 1000000);
+}
+
+/* sentinel to indicate taking the system default sound attributes */
+#define USE_DEFAULT -1000.0
+#define USE_DEFAULT_PRIO -1000
+struct sound {
+	xmlChar *name;
+	xmlChar *file;
+	int prio;
+	float vol, pan;
+	int min_interval;
+	struct timespec timestamp;
+
+};
+struct sound *sounds;
+
+
 static void enqueue_sound(int sound_id)
 {
+	struct timespec now, elapsed;
+	int elapsed_ms;
+
 	if (sound_id == NO_SOUND)
 		return;
 
-	pthread_mutex_lock(&events.lock);
-	events.next = (events.next + 1) % NUM_EVENTS;
-	debugmsg("cur = %d, next = %d\n", events.cur, events.next);
-	if (events.next == events.cur) {
-		fprintf(stderr, "event queue overflow!\n");
-		exit(1);
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	elapsed = timespec_diff(&now, &(sounds[sound_id].timestamp));
+	elapsed_ms = timespec2ms(&elapsed);
+
+	if (elapsed_ms > sounds[sound_id].min_interval) {
+		pthread_mutex_lock(&events.lock);
+		sounds[sound_id].timestamp = now;
+		events.next = (events.next + 1) % NUM_EVENTS;
+		debugmsg("cur = %d, next = %d\n", events.cur, events.next);
+		if (events.next == events.cur) {
+			events.next--;
+			fprintf(stderr, "WARNING: event queue overflow! sound dropped\n");
+		} else {
+			events.entry[events.next].sound_id = sound_id;
+		}
+		pthread_cond_signal(&events.events_available);
+		pthread_mutex_unlock(&events.lock);
 	}
-	events.entry[events.next].sound_id = sound_id;
-	pthread_cond_signal(&events.events_available);
-	pthread_mutex_unlock(&events.lock);
 }
 
 struct trigger {
@@ -136,17 +188,6 @@ struct trigger {
 };
 struct trigger *triggers;
 
-/* sentinel to indicate taking the system default sound attributes */
-#define USE_DEFAULT -1000.0
-#define USE_DEFAULT_PRIO -1000
-struct sound {
-	xmlChar *name;
-	xmlChar *file;
-	int prio;
-	float vol, pan;
-
-};
-struct sound *sounds;
 
 #ifdef __CYGWIN__
 #define POS_VAL(pos) pos
@@ -267,6 +308,7 @@ int find_free_channel(void)
 #define SOUND_VOL_ELT 			(xmlChar *)"vol"
 #define SOUND_PAN_ELT 			(xmlChar *)"pan"
 #define SOUND_PRIO_ELT 			(xmlChar *)"priority"
+#define SOUND_MIN_INTERVAL_ELT	(xmlChar *)"min_interval"
 
 #define TRIGGER_ELT 			(xmlChar *)"trigger"
 #define TRIGGER_NAME_ATTR 		(xmlChar *)"name"
@@ -382,7 +424,7 @@ static xmlNodePtr get_element_text(xmlNodePtr node, const xmlChar *element)
 
 void process_sound_element(xmlNodePtr node)
 {
-	xmlNodePtr children = node->children, file, vol, pan, prio;
+	xmlNodePtr children = node->children, file, vol, pan, prio, min_interval;
 	static int sound_cntr = 0;
 
 	sounds[sound_cntr].name = xmlGetProp(node, SOUND_NAME_ATTR);
@@ -419,6 +461,15 @@ void process_sound_element(xmlNodePtr node)
 	} else {
 		sounds[sound_cntr].prio = USE_DEFAULT_PRIO;
 	}
+
+	min_interval = get_element_text(children, SOUND_MIN_INTERVAL_ELT);
+	if (prio != NULL) {
+		sscanf((char *)min_interval->content, "%d", &sounds[sound_cntr].min_interval);
+	} else {
+		sounds[sound_cntr].min_interval = 0;
+	}
+	sounds[sound_cntr].timestamp.tv_sec = 0;
+	sounds[sound_cntr].timestamp.tv_nsec = 0;
 
 	sound_cntr++;
 }
@@ -780,12 +831,12 @@ int main(int argc, char *argv[]) {
 
 			free_channel = find_free_channel();
 			if (free_channel == -1) {
-				fprintf(stderr, "No free channels!\n");
-				exit(1);
+				fprintf(stderr, "WARNING: No free channels! Dropping sound\n");
+			} else {
+				result = FMOD_System_PlaySound(system,
+						FMOD_CHANNEL_FREE, fmod_sounds[sound_id], 0, &channel[free_channel]);
+				ERRCHECK(result);
 			}
-			result = FMOD_System_PlaySound(system,
-					FMOD_CHANNEL_FREE, fmod_sounds[sound_id], 0, &channel[free_channel]);
-			ERRCHECK(result);
 		} else {
 			fprintf(stderr, "sound_id: %d exceeds the last sound_id: %d\n", sound_id, num_sounds - 1);
 			exit(1);
