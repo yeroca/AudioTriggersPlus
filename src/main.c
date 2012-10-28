@@ -160,28 +160,36 @@ static void enqueue_sound(int sound_id)
 {
 	struct timespec now, elapsed;
 	long elapsed_ms;
+	long min_interval;
 
 	if (sound_id == NO_SOUND)
 		return;
 
-	clock_gettime(CLOCK_REALTIME, &now);
-	elapsed = timespec_diff(&now, &(sounds[sound_id].timestamp));
-	elapsed_ms = timespec2ms(&elapsed);
+	min_interval = sounds[sound_id].min_interval;
 
-	if (elapsed_ms > sounds[sound_id].min_interval) {
-		pthread_mutex_lock(&events.lock);
-		sounds[sound_id].timestamp = now;
-		events.next = (events.next + 1) % NUM_EVENTS;
-		debugmsg("cur = %d, next = %d\n", events.cur, events.next);
-		if (events.next == events.cur) {
-			events.next--;
-			fprintf(stderr, "WARNING: event queue overflow! sound dropped\n");
-		} else {
-			events.entry[events.next].sound_id = sound_id;
-		}
-		pthread_cond_signal(&events.events_available);
-		pthread_mutex_unlock(&events.lock);
+	if (min_interval > 0) {
+		clock_gettime(CLOCK_REALTIME, &now);
+		elapsed = timespec_diff(&now, &(sounds[sound_id].timestamp));
+		elapsed_ms = timespec2ms(&elapsed);
+
+		if (elapsed_ms < min_interval)
+			return;
 	}
+
+	pthread_mutex_lock(&events.lock);
+	if (min_interval > 0)
+		sounds[sound_id].timestamp = now;
+	events.next = (events.next + 1) % NUM_EVENTS;
+	debugmsg("cur = %d, next = %d\n", events.cur, events.next);
+	if (events.next == events.cur) {
+		events.next--;
+		fprintf(stderr, "WARNING: event queue overflow! sound dropped\n");
+	} else {
+		events.entry[events.next].sound_id = sound_id;
+	}
+	pthread_cond_signal(&events.events_available);
+	pthread_mutex_unlock(&events.lock);
+
 }
 
 struct trigger {
