@@ -803,10 +803,24 @@ int main(int argc, char *argv[]) {
 
 	open_config_xml(&doc);
 	node = doc->children;
+
+/*
 	if (!xmlStrEqual(node->name, AUDIOTRIGGERS_ELT)) {
 		fprintf(stderr, "root element of %s is not audiotriggers\n", CONFIG_XML);
 		exit(1);
 	}
+*/
+	while (node) {
+		if (xmlStrEqual(node->name, AUDIOTRIGGERS_ELT)) {
+			break;
+		}
+		node = node->next;
+	}
+	if (!node) {
+		fprintf(stderr, "root element of %s is not audiotriggers\n", CONFIG_XML);
+		exit(1);
+	}
+	
 	node = node->children;
 	load_sounds_from_config(node);
 	load_triggers_from_config(node);
