@@ -804,12 +804,6 @@ int main(int argc, char *argv[]) {
 	open_config_xml(&doc);
 	node = doc->children;
 
-/*
-	if (!xmlStrEqual(node->name, AUDIOTRIGGERS_ELT)) {
-		fprintf(stderr, "root element of %s is not audiotriggers\n", CONFIG_XML);
-		exit(1);
-	}
-*/
 	while (node) {
 		if (xmlStrEqual(node->name, AUDIOTRIGGERS_ELT)) {
 			break;
@@ -817,7 +811,7 @@ int main(int argc, char *argv[]) {
 		node = node->next;
 	}
 	if (!node) {
-		fprintf(stderr, "root element of %s is not audiotriggers\n", CONFIG_XML);
+		fprintf(stderr, "Unable to find <audiotriggers> element at root of %s\n", CONFIG_XML);
 		exit(1);
 	}
 	
